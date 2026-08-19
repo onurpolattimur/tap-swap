@@ -438,7 +438,12 @@ var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,score,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned;
 var orbs,orbGen,orbsGot,orbsTotal,combo,comboT,reviveUsed,invulnT,tutHint=false;
 var bestStars={};
-function totalStars(){var s=0;for(var k in bestStars)s+=bestStars[k];return s;}
+var HOUSE_TH=[10,35,75,140,220,330]; // ev süsü eşikleri (bankalanan para)
+function houseTier(){
+  var t=0;
+  for(var i=0;i<HOUSE_TH.length;i++)if(bankedCoins>=HOUSE_TH[i])t++;
+  return t;
+}
 
 // ---------- kayıt (localStorage) ----------
 var SAVE_KEY='ruhkosucusu.save.v1';
@@ -743,6 +748,12 @@ function die(reason){
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
+function nextTierText(){
+  for(var i=0;i<HOUSE_TH.length;i++)
+    if(bankedCoins<HOUSE_TH[i])
+      return ' · sıradaki ev süsü: '+bankedCoins+'/'+HOUSE_TH[i];
+  return ' · <b style="color:#5FD3C4">ev tamamlandı!</b>';
+}
 function winLevel(){
   won=true;shake=3;
   fx.rings.push({x:goalX,y:yRunner()-10,r:4,a:1});
@@ -765,7 +776,7 @@ function winLevel(){
   document.getElementById('winScore').textContent=Math.floor(score);
   document.getElementById('winStats').innerHTML=
     swaps+' beden · '+orbsGot+'/'+orbsTotal+' para eve geldi · '+clutch+' son saniye'+
-    (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>':'')+
+    (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>'+nextTierText():'')+
     (level===3?'<br><b style="color:#FF4D5A">Dikkat: bundan sonra bedenler yoruluyor!</b>':'');
   setTimeout(function(){
     document.getElementById('win').classList.remove('hidden');
@@ -823,17 +834,19 @@ function drawHouse(sx){
   ctx.fillRect(sx-2,gy-11,4,3);
   ctx.fillStyle='#4A2F1C';
   ctx.fillRect(sx+6,gy-46,4,8);
-  var tier=totalStars();
-  if(tier>=2){ // bahçe: çit + çiçekler
+  var tier=houseTier();
+  if(tier>=1){ // çit
     ctx.fillStyle='#D8CDB2';
     for(var fp=-24;fp<=-16;fp+=4)ctx.fillRect(sx+fp,gy-6,2,6);
     for(var fp=16;fp<=24;fp+=4)ctx.fillRect(sx+fp,gy-6,2,6);
+  }
+  if(tier>=2){ // çiçekler
     ctx.fillStyle='#5FA85A';
     ctx.fillRect(sx-20,gy-6,2,4);ctx.fillRect(sx+19,gy-6,2,4);
     ctx.fillStyle='#FF9EB5';ctx.fillRect(sx-20,gy-8,2,2);
     ctx.fillStyle='#F7C566';ctx.fillRect(sx+19,gy-8,2,2);
   }
-  if(tier>=6){ // kedi + baca dumanı
+  if(tier>=3){ // kedi + baca dumanı
     ctx.fillStyle='#241C2E';
     ctx.fillRect(sx+9,gy-5,5,4);
     ctx.fillRect(sx+9,gy-7,2,2);ctx.fillRect(sx+12,gy-7,2,2);
@@ -843,6 +856,24 @@ function drawHouse(sx){
     ctx.fillRect(sx+7,gy-48-sm,2,2);
     if(sm>4)ctx.fillRect(sx+5,gy-52-sm,2,2);
     ctx.globalAlpha=1;
+  }
+  if(tier>=4){ // çatı ışık dizisi
+    var lcols=['#FF4D5A','#F7C566','#5FD3C4','#FF9EB5'];
+    for(var li=0;li<7;li++){
+      ctx.fillStyle=((li+(frame>>3))%2===0)?lcols[li%4]:'#3A2A22';
+      ctx.fillRect(sx-13+li*4,gy-33,2,2);
+    }
+  }
+  if(tier>=5){ // ağaç
+    ctx.fillStyle='#5C3E24';ctx.fillRect(sx-31,gy-14,3,14);
+    disc(ctx,sx-30,gy-17,7,'#4E8F4A');
+    ctx.fillStyle='#8FCB7A';ctx.fillRect(sx-32,gy-22,2,1);
+  }
+  if(tier>=6){ // çatı penceresi + flama
+    ctx.fillStyle='#3A2A22';ctx.fillRect(sx-2,gy-40,4,4);
+    ctx.fillStyle=glow?'#FFE9A8':'#F7C566';ctx.fillRect(sx-1,gy-39,2,2);
+    ctx.fillStyle='#D8CDB2';ctx.fillRect(sx-7,gy-49,1,6);
+    ctx.fillStyle='#5FD3C4';ctx.fillRect(sx-6,gy-49,4,2);ctx.fillRect(sx-6,gy-47,2,1);
   }
   drawText('EV',Math.round(sx-textW('EV',1)/2),gy-52,'#5FD3C4',1);
 }
