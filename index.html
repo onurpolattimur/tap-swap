@@ -438,7 +438,7 @@ var DRAIN={runner:1/5.5,bike:1/4.5,bird:1/4.2,car:1/3.6,truck:1/3.2};
 var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,score,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned;
-var orbs,orbGen,orbsGot,orbsTotal,combo,comboT,reviveUsed,invulnT,tutHint=false;
+var orbs,orbGen,orbsGot,orbsTotal,runCoins,combo,comboT,reviveUsed,invulnT,tutHint=false;
 var bestStars={};
 var HOUSE_TH=[10,35,75,140,220,330]; // ev süsü eşikleri (bankalanan para)
 function houseTier(){
@@ -472,7 +472,7 @@ function saveProgress(lv){
 
 function newHost(type,x){
   return {type:type,x:x,speed:SPEED[type]*LV.mul,anim:Math.random()*10,
-          v:Math.floor(Math.random()*3),st:1};
+          v:Math.floor(Math.random()*3),st:1,bag:0};
 }
 function reset(){
   LV=lvParams(level);
@@ -487,7 +487,7 @@ function reset(){
   hosts.push(newHost('bike',startX+30));
   spirit=null;lastHost=null;lastHopT=-9;camX=0;warned=false;
   fx={lines:[],rings:[],texts:[],puffs:[],finger:null,miss:[],confetti:[]};
-  orbs=[];orbGen=startX+120;orbsGot=0;orbsTotal=0;
+  orbs=[];orbGen=startX+120;orbsGot=0;orbsTotal=0;runCoins=0;
   combo=1;comboT=0;reviveUsed=false;invulnT=0;
   t=0;score=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;
 }
@@ -506,7 +506,9 @@ function genLane(l){
   obs[l].push({x:x,w:OBW[l]});
   var rl=free[Math.floor(Math.random()*free.length)];
   var rt=(rl==='car'&&Math.random()<LV.truckChance*2)?'truck':rl;
-  hosts.push(newHost(rt,x-90-Math.random()*40));
+  var nh=newHost(rt,x-90-Math.random()*40);
+  if(Math.random()<0.15)nh.bag=2+Math.floor(Math.random()*3);
+  hosts.push(nh);
   gen[l]=x+LV.gap*(0.9+Math.random()*0.6);
 }
 function distToObs(h){
@@ -530,6 +532,12 @@ function hop(target){
   if(comboT>0){combo=Math.min(combo+1,5);SFX.comboUp(combo);}else combo=1;
   comboT=1.5;
   swaps++;score+=25*combo;
+  if(target.bag>0){
+    runCoins+=target.bag;
+    fx.texts.push({x:target.x,y:hostYf(target)-16,s:'+'+target.bag,a:1.2,c:'#F7C566'});
+    target.bag=0;
+    SFX.orb();
+  }
   SFX.hop();
 }
 function hostYf(h){
@@ -573,7 +581,7 @@ function autoThink(dt){
     if(sx<8||sx>W-8)continue;
     var d=distToObs(h);
     if(d<h.speed*0.5+20)continue;
-    var s=Math.min(d,300)+h.speed*0.4-Math.abs(h.x-me.x)*0.2;
+    var s=Math.min(d,300)+h.speed*0.4-Math.abs(h.x-me.x)*0.2+(h.bag?h.bag*10:0);
     if(s>bs){bs=s;best=h;}
   }
   if(best){
@@ -687,7 +695,7 @@ function update(dt){
   if(me&&!spirit){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
       if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<7){
-        orbs.splice(io,1);orbsGot++;
+        orbs.splice(io,1);orbsGot++;runCoins++;
         score+=10*combo;
         fx.texts.push({x:me.x,y:hostYf(me)-12,s:'+1',a:1,c:'#F7C566'});
         SFX.orb();
@@ -716,7 +724,9 @@ function update(dt){
   if(Math.random()<d*0.8 && camX+W+60<goalX-40){
     var rt=Math.random();
     var type=rt<LV.truckChance?'truck':LANES[Math.floor(Math.random()*4)];
-    hosts.push(newHost(type,camX+W+60));
+    var rh=newHost(type,camX+W+60);
+    if(Math.random()<0.15)rh.bag=2+Math.floor(Math.random()*3);
+    hosts.push(rh);
   }
 
   fx.confetti.forEach(function(c){c.vy+=140*dt;c.x+=c.vx*dt;c.y+=c.vy*dt;c.a-=dt*0.8;});
@@ -746,7 +756,7 @@ function die(reason){
   document.getElementById('deathStats').innerHTML=
     swaps+' beden · '+clutch+' son saniye · '+smashed+' ezme · '+
     Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100)+'% yol'+
-    (orbsGot>0?'<br><b style="color:#F7C566">'+orbsGot+' para</b> yolda kaldı':'');
+    (runCoins>0?'<br><b style="color:#F7C566">'+runCoins+' para</b> yolda kaldı':'');
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
@@ -769,7 +779,7 @@ function winLevel(){
   var stars=1+(pct>=0.5?1:0)+(pct>=0.9?1:0);
   if(mode!=='auto'){
     if(!bestStars[level]||stars>bestStars[level])bestStars[level]=stars;
-    bankedCoins+=orbsGot;
+    bankedCoins+=runCoins;
     saveProgress(level+1);
   }
   document.getElementById('winStars').textContent=
@@ -777,7 +787,7 @@ function winLevel(){
   document.getElementById('winTitle').textContent='LEVEL '+level+' — EVDESİN!';
   document.getElementById('winScore').textContent=Math.floor(score);
   document.getElementById('winStats').innerHTML=
-    swaps+' beden · '+orbsGot+'/'+orbsTotal+' para eve geldi · '+clutch+' son saniye'+
+    swaps+' beden · '+runCoins+' para eve geldi · '+clutch+' son saniye'+
     (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>'+nextTierText():'')+
     (level===3?'<br><b style="color:#FF4D5A">Dikkat: bundan sonra bedenler yoruluyor!</b>':'');
   setTimeout(function(){
@@ -811,6 +821,9 @@ function pixelLine(x1,y1,x2,y2,color,alpha){
     ctx.fillRect(Math.round(x1+(x2-x1)*f),Math.round(y1+(y2-y1)*f),1,1);
   }
   ctx.globalAlpha=1;
+}
+function hostHalf(h){
+  return h.type==='car'?8:h.type==='truck'?9:h.type==='bird'?7:h.type==='bike'?8:11;
 }
 function hostSprite(h){
   var fr=getFrames(h);
@@ -1014,19 +1027,28 @@ function draw(){
     if(h===me)return;
     var sx=h.x-camX;if(sx<-24||sx>W+24)return;
     blit(hostSprite(h),sx,hostYf(h));
+    if(h.bag>0){ // zengin beden: kese + parıltı
+      var bx2=Math.round(sx),by2=hostYf(h)-hostHalf(h)-3;
+      ctx.fillStyle='#C97B3C';
+      ctx.fillRect(bx2-1,by2-1,3,3);
+      ctx.fillRect(bx2,by2-2,1,1);
+      ctx.fillStyle='#F7C566';
+      ctx.fillRect(bx2,by2,1,1);
+      if((frame>>3)%2===0){ctx.fillStyle='#FFE9A8';ctx.fillRect(bx2+3,by2-3,1,1);}
+    }
   });
 
   if(me&&!dead){
     var mx=me.x-camX,myy=hostYf(me);
     if(!(invulnT>0&&((frame>>2)%2===0)))blit(hostSprite(me),mx,myy);
-    var half=me.type==='car'?8:me.type==='truck'?9:me.type==='bird'?7:me.type==='bike'?8:11;
+    var half=hostHalf(me);
     var bob=((frame>>3)%2===0)?0:1;
     var top=myy-half-5-bob;
     ctx.fillStyle='#F5EFE0';
     ctx.fillRect(Math.round(mx)-2,top-2,5,1);
     ctx.fillRect(Math.round(mx)-1,top-1,3,1);
     ctx.fillRect(Math.round(mx),top,1,1);
-    if(orbsGot>0){ // para kesesi ruhla gezer
+    if(runCoins>0){ // para kesesi ruhla gezer
       var kbx=Math.round(mx)+4;
       ctx.fillStyle='#C97B3C';
       ctx.fillRect(kbx,top-1,3,3);
@@ -1055,7 +1077,7 @@ function draw(){
     ctx.fillRect(Math.round(sx)-3,Math.round(sy),1,1);
     ctx.fillRect(Math.round(sx)+3,Math.round(sy),1,1);
     ctx.globalAlpha=1;
-    if(orbsGot>0){
+    if(runCoins>0){
       ctx.fillStyle='#C97B3C';
       ctx.fillRect(Math.round(sx)+3,Math.round(sy)-3,3,3);
       ctx.fillStyle='#F7C566';
@@ -1096,7 +1118,7 @@ function draw(){
     ctx.fillStyle='#F7C566';
     ctx.fillRect(6,29,4,4);ctx.fillRect(7,28,2,1);ctx.fillRect(7,33,2,1);
     ctx.fillStyle='#FFE9A8';ctx.fillRect(7,30,1,2);
-    drawText(''+orbsGot,14,29,'#F7C566',1);
+    drawText(''+runCoins,14,29,'#F7C566',1);
     var lbl=(mode==='auto')?'DEMO':'TAP=SWAP';
     drawText(lbl,W-6-textW(lbl,1),6,hudMut,1);
     if(tutHint&&((frame>>3)%2===0))
