@@ -66,6 +66,7 @@
     <button class="btn primary" id="btnPlay">LEVEL 1 — YOLA ÇIK</button>
     <button class="btn" id="btnAuto">OTOMATİK DEMO — İZLE</button>
     <div class="small" style="color:#F7C566" id="menuBank"></div>
+    <button id="btnReset" style="font-family:inherit;font-size:9px;letter-spacing:.1em;background:none;border:none;color:#7A8199;cursor:pointer;text-decoration:underline;padding:4px">İLERLEMEYİ SIFIRLA</button>
     <div class="small">gündüz parkı → günbatımı → gece şehri → ...</div>
   </div>
 
@@ -1221,6 +1222,25 @@ document.getElementById('btnRevive').onclick=function(){
     invulnT=1.2;combo=1;comboT=0;warned=false;
     SFX.revive();
   },700);
+};
+var resetArm=false,resetT=null;
+document.getElementById('btnReset').onclick=function(){
+  var b=document.getElementById('btnReset');
+  if(!resetArm){
+    resetArm=true;
+    b.textContent='EMİN MİSİN? TEKRAR DOKUN';b.style.color='#FF4D5A';
+    resetT=setTimeout(function(){
+      resetArm=false;
+      b.textContent='İLERLEMEYİ SIFIRLA';b.style.color='#7A8199';
+    },2500);
+    return;
+  }
+  clearTimeout(resetT);resetArm=false;
+  savedLevel=1;bankedCoins=0;bestStars={};level=1;
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  reset();syncPlayBtn();
+  b.textContent='İLERLEMEYİ SIFIRLA';b.style.color='#7A8199';
+  SFX.ui();
 };
 document.getElementById('btnShare').onclick=function(){
   SFX.ui();
