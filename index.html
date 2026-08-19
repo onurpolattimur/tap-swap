@@ -53,9 +53,9 @@
 
   <div class="overlay" id="menu">
     <h1>RUH<span> </span>KOŞUCUSU</h1>
-    <div class="tag"><b>Amaç: ruhu eve ulaştır.</b><br>
-    Bir bedene dokun → ona geçersin. Eski bedenin koşmaya devam eder.<br>
-    Kamyon bariyerleri ezer. Level 4'ten itibaren bedenler yorulur!</div>
+    <div class="tag"><b>Amaç: paraları toplayıp ruhu eve ulaştır.</b><br>
+    Bir bedene dokun → ona geçersin. Para kesesi ruhla birlikte taşınır.<br>
+    Kamyon bariyerleri ezer. Ölürsen para yolda kalır!</div>
     <div class="legend">
       <span><i style="background:#9AA2BC"></i>kuş→direk</span>
       <span><i style="background:#5A8BC4"></i>araba→bariyer</span>
@@ -419,7 +419,7 @@ document.addEventListener('fullscreenchange',function(){setTimeout(layout,100);}
 var level=1;
 function lvParams(n){
   return {
-    dist: 500+(n-1)*260,
+    dist: 420+(n-1)*250,
     mul: Math.min(0.72+(n-1)*0.07, 1.45),
     gap: Math.max(130, 280-(n-1)*16),
     drainMul: n<4?0:Math.min(0.55+(n-4)*0.1, 1.15),
