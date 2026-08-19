@@ -19,6 +19,7 @@
     align-items:center;justify-content:center;gap:9px;
     background:rgba(5,6,13,.9);text-align:center;padding:16px}
   .overlay.hidden{display:none}
+  #menu,#win{background:linear-gradient(rgba(5,6,13,.96) 0%,rgba(5,6,13,.9) 52%,rgba(5,6,13,.3) 82%,rgba(5,6,13,.12) 100%)}
   h1{color:var(--cream);font-size:21px;letter-spacing:.18em;font-weight:700;
     text-shadow:2px 2px 0 #1B2136}
   h1 span{color:var(--teal)}
@@ -64,6 +65,7 @@
     </div>
     <button class="btn primary" id="btnPlay">LEVEL 1 — YOLA ÇIK</button>
     <button class="btn" id="btnAuto">OTOMATİK DEMO — İZLE</button>
+    <div class="small" style="color:#F7C566" id="menuBank"></div>
     <div class="small">gündüz parkı → günbatımı → gece şehri → ...</div>
   </div>
 
@@ -1119,11 +1121,16 @@ var last=performance.now();
 function loop(now){
   var dt=Math.min((now-last)/1000,0.033);last=now;
   if(mode!=='idle'&&!dead&&!won)update(dt);
+  if(mode==='idle')camX=goalX-Math.round(W*0.62);
   draw();
   requestAnimationFrame(loop);
 }
 function syncPlayBtn(){
   document.getElementById('btnPlay').textContent='LEVEL '+level+' — YOLA ÇIK';
+  var t='EVDEKİ PARA: '+bankedCoins;
+  for(var i=0;i<HOUSE_TH.length;i++)
+    if(bankedCoins<HOUSE_TH[i]){t+=' · SIRADAKİ SÜS: '+HOUSE_TH[i];break;}
+  document.getElementById('menuBank').textContent=t;
 }
 loadSave();syncPlayBtn();
 layout();reset();requestAnimationFrame(loop);
