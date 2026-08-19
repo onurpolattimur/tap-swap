@@ -437,7 +437,7 @@ var DRAIN={runner:1/5.5,bike:1/4.5,bird:1/4.2,car:1/3.6,truck:1/3.2};
 
 var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
-var fx,t,score,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned;
+var fx,t,score,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,orbsGot,orbsTotal,runCoins,combo,comboT,reviveUsed,invulnT,tutHint=false;
 var bestStars={};
 var HOUSE_TH=[10,35,75,140,220,330]; // ev süsü eşikleri (bankalanan para)
@@ -489,7 +489,7 @@ function reset(){
   fx={lines:[],rings:[],texts:[],puffs:[],finger:null,miss:[],confetti:[]};
   orbs=[];orbGen=startX+120;orbsGot=0;orbsTotal=0;runCoins=0;
   combo=1;comboT=0;reviveUsed=false;invulnT=0;
-  t=0;score=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;
+  t=0;score=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
 function laneFreeAt(l,x,rad){
   var a=obs[l];
@@ -506,6 +506,7 @@ function genLane(l){
   obs[l].push({x:x,w:OBW[l]});
   var rl=free[Math.floor(Math.random()*free.length)];
   var rt=(rl==='car'&&Math.random()<LV.truckChance*2)?'truck':rl;
+  if(rt==='truck')truckSeen=true;
   var nh=newHost(rt,x-90-Math.random()*40);
   if(Math.random()<0.15)nh.bag=2+Math.floor(Math.random()*3);
   hosts.push(nh);
@@ -722,8 +723,9 @@ function update(dt){
     }
   }
   if(Math.random()<d*0.8 && camX+W+60<goalX-40){
-    var rt=Math.random();
-    var type=rt<LV.truckChance?'truck':LANES[Math.floor(Math.random()*4)];
+    var type=Math.random()<LV.truckChance?'truck':LANES[Math.floor(Math.random()*4)];
+    if(LV.truckChance>0&&!truckSeen&&me&&me.x-startX>LV.dist*0.4)type='truck';
+    if(type==='truck')truckSeen=true;
     var rh=newHost(type,camX+W+60);
     if(Math.random()<0.15)rh.bag=2+Math.floor(Math.random()*3);
     hosts.push(rh);
