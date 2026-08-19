@@ -440,6 +440,28 @@ var orbs,orbGen,orbsGot,orbsTotal,combo,comboT,reviveUsed,invulnT,tutHint=false;
 var bestStars={};
 function totalStars(){var s=0;for(var k in bestStars)s+=bestStars[k];return s;}
 
+// ---------- kayıt (localStorage) ----------
+var SAVE_KEY='ruhkosucusu.save.v1';
+var savedLevel=1;
+function loadSave(){
+  var raw=null;
+  try{raw=localStorage.getItem(SAVE_KEY);}catch(e){return;}
+  if(!raw)return;
+  try{
+    var d=JSON.parse(raw);
+    if(d&&isFinite(d.level)&&d.level>=1)savedLevel=Math.floor(d.level);
+    if(d&&d.stars)for(var k in d.stars){
+      var st=Math.floor(d.stars[k]);
+      if(isFinite(st)&&st>0)bestStars[k]=Math.min(3,st);
+    }
+  }catch(e){}
+  level=savedLevel;
+}
+function saveProgress(lv){
+  if(lv>savedLevel)savedLevel=lv;
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({level:savedLevel,stars:bestStars}));}catch(e){}
+}
+
 function newHost(type,x){
   return {type:type,x:x,speed:SPEED[type]*LV.mul,anim:Math.random()*10,
           v:Math.floor(Math.random()*3),st:1};
@@ -730,7 +752,10 @@ function winLevel(){
   SFX.win();
   var pct=orbsTotal>0?orbsGot/orbsTotal:1;
   var stars=1+(pct>=0.5?1:0)+(pct>=0.9?1:0);
-  if(!bestStars[level]||stars>bestStars[level])bestStars[level]=stars;
+  if(mode!=='auto'){
+    if(!bestStars[level]||stars>bestStars[level])bestStars[level]=stars;
+    saveProgress(level+1);
+  }
   document.getElementById('winStars').textContent=
     '★★★'.slice(0,stars)+'☆☆☆'.slice(0,3-stars);
   document.getElementById('winTitle').textContent='LEVEL '+level+' — EVDESİN!';
@@ -1039,6 +1064,10 @@ function loop(now){
   draw();
   requestAnimationFrame(loop);
 }
+function syncPlayBtn(){
+  document.getElementById('btnPlay').textContent='LEVEL '+level+' — YOLA ÇIK';
+}
+loadSave();syncPlayBtn();
 layout();reset();requestAnimationFrame(loop);
 
 // ---------- butonlar ----------
@@ -1053,16 +1082,21 @@ function start(m){
   SFX.ui();
   reset();mode=m;dead=false;won=false;
   hideOverlays();
-  document.getElementById('btnPlay').textContent='LEVEL '+level+' — YOLA ÇIK';
+  syncPlayBtn();
 }
 document.getElementById('btnPlay').onclick=function(){start('play')};
 document.getElementById('btnAuto').onclick=function(){level=1;start('auto')};
-document.getElementById('btnNext').onclick=function(){level++;start(mode==='auto'?'auto':'play')};
+document.getElementById('btnNext').onclick=function(){
+  level++;
+  if(mode!=='auto')saveProgress(level);
+  start(mode==='auto'?'auto':'play');
+};
 document.getElementById('btnAgain').onclick=function(){start(mode==='auto'?'auto':'play')};
 document.getElementById('btnMenu1').onclick=function(){
+  if(mode==='auto')level=savedLevel;
   mode='idle';hideOverlays();
   document.getElementById('menu').classList.remove('hidden');
-  document.getElementById('btnPlay').textContent='LEVEL '+level+' — YOLA ÇIK';
+  syncPlayBtn();
 };
 document.getElementById('btnMenu2').onclick=document.getElementById('btnMenu1').onclick;
 document.getElementById('btnRevive').onclick=function(){
