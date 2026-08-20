@@ -444,8 +444,15 @@ var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
-var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null;
+var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null,shield=0;
 var HOUSE_TH=[10,30,60,100,150,210]; // ev süsü eşikleri (bankalanan para)
+var HOUSE_PERKS=[ // her süs bir oynanış perki: ev = güç
+ {n:'ÇİT',d:'bedenler %15 geç yorulur'},
+ {n:'ÇİÇEKLER',d:'keseler +1 para'},
+ {n:'KEDİ',d:'paraları uzaktan çeker'},
+ {n:'IŞIKLAR',d:'bayrakta paran güvende'},
+ {n:'AĞAÇ',d:'her run 1 kalkan'},
+ {n:'ŞAFAK',d:'final yolculuğu'}];
 function houseTier(){
   var t=0;
   for(var i=0;i<HOUSE_TH.length;i++)if(bankedCoins>=HOUSE_TH[i])t++;
@@ -497,6 +504,7 @@ function reset(){
   fx={lines:[],rings:[],texts:[],puffs:[],finger:null,miss:[],confetti:[]};
   orbs=[];orbGen=spawnX+120;orbsGot=0;orbsTotal=0;runCoins=0;
   reviveUsed=false;invulnT=0;
+  shield=(houseTier()>=5)?1:0; // ağaç perki
   t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
 function bagChance(type){
@@ -545,8 +553,9 @@ function hop(target){
   slowT=0.09;shake=Math.max(shake,2);
   swaps++;
   if(target.bag>0){
-    runCoins+=target.bag;
-    fx.texts.push({x:target.x,y:hostYf(target)-16,s:'+'+target.bag,a:1.2,c:'#F7C566'});
+    var got=target.bag+(houseTier()>=2?1:0); // çiçek perki
+    runCoins+=got;
+    fx.texts.push({x:target.x,y:hostYf(target)-16,s:'+'+got,a:1.2,c:'#F7C566'});
     target.bag=0;
     SFX.orb();
   }
@@ -633,7 +642,7 @@ function update(dt){
   if(invulnT>0)invulnT-=dt;
 
   if(LV.drainMul>0&&me&&!spirit){
-    me.st-=DRAIN[me.type]*LV.drainMul*d;
+    me.st-=DRAIN[me.type]*LV.drainMul*d*(houseTier()>=1?0.85:1); // çit perki
     if(me.st<0.3&&!warned){warned=true;SFX.tired();}
     if(me.st<=0){die('BEDEN TÜKENDİ');return;}
   }
@@ -680,6 +689,13 @@ function update(dt){
             smashed++;runCoins+=1;shake=Math.max(shake,4);
             SFX.smash();
             a.splice(j,1);
+          } else if(shield>0){ // ağaç perki: kalkan çarpışmayı yer
+            shield=0;a.splice(j,1);
+            fx.puffs.push({x:me.x,y:hostYf(me),r:2,a:1});
+            fx.rings.push({x:me.x,y:hostYf(me),r:3,a:1.2});
+            fx.texts.push({x:me.x,y:hostYf(me)-16,s:'KALKAN',a:1.2,c:'#5FD3C4'});
+            invulnT=0.9;shake=Math.max(shake,4);
+            SFX.smash();
           } else {die('ÇARPTIN');return;}
         }
       }
@@ -725,7 +741,7 @@ function update(dt){
   }
   if(me&&!spirit){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
-      if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<7){
+      if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<(houseTier()>=3?12:7)){ // kedi perki
         orbs.splice(io,1);orbsGot++;runCoins++;
         fx.texts.push({x:me.x,y:hostYf(me)-12,s:'+1',a:1,c:'#F7C566'});
         SFX.orb();
@@ -808,7 +824,8 @@ function settleDeath(){ // ölüm kesinleşti: güvendeki para bankaya, kalanı 
 function nextTierText(){
   for(var i=0;i<HOUSE_TH.length;i++)
     if(bankedCoins<HOUSE_TH[i])
-      return ' · sıradaki ev süsü: '+bankedCoins+'/'+HOUSE_TH[i];
+      return ' · sıradaki: <b style="color:#F7C566">'+HOUSE_PERKS[i].n+'</b> ('+
+        HOUSE_PERKS[i].d+') '+bankedCoins+'/'+HOUSE_TH[i];
   return ' · <b style="color:#5FD3C4">ev tamamlandı!</b>';
 }
 function winLevel(){
@@ -1106,6 +1123,7 @@ function draw(){
     ctx.fillRect(Math.round(mx)-2,top-2,5,1);
     ctx.fillRect(Math.round(mx)-1,top-1,3,1);
     ctx.fillRect(Math.round(mx),top,1,1);
+    if(shield>0&&((frame>>3)%2===0))pixelRing(mx,myy,hostHalf(me)+3,'#5FD3C4',0.35);
     if(runCoins>0){ // para kesesi ruhla gezer
       var kbx=Math.round(mx)+4;
       ctx.fillStyle='#C97B3C';
@@ -1209,7 +1227,11 @@ function syncPlayBtn(){
   document.getElementById('btnPlay').textContent='LEVEL '+level+' — YOLA ÇIK';
   var t='EVDEKİ PARA: '+bankedCoins;
   for(var i=0;i<HOUSE_TH.length;i++)
-    if(bankedCoins<HOUSE_TH[i]){t+=' · SIRADAKİ SÜS: '+HOUSE_TH[i];break;}
+    if(bankedCoins<HOUSE_TH[i]){
+      t+=' · SIRADAKİ: '+HOUSE_PERKS[i].n+' — '+HOUSE_PERKS[i].d+' ('+bankedCoins+'/'+HOUSE_TH[i]+')';
+      break;
+    }
+  if(bankedCoins>=HOUSE_TH[HOUSE_TH.length-1])t+=' · EV TAMAMLANDI';
   document.getElementById('menuBank').textContent=t;
 }
 loadSave();syncPlayBtn();
