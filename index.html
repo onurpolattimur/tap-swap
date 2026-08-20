@@ -53,9 +53,9 @@
 
   <div class="overlay" id="menu">
     <h1>RUH<span> </span>KOŞUCUSU</h1>
-    <div class="tag"><b>Amaç: paraları toplayıp ruhu eve ulaştır.</b><br>
-    Bir bedene dokun → ona geçersin. Para kesesi ruhla birlikte taşınır.<br>
-    Kamyon bariyerleri ezer. Ölürsen para yolda kalır!</div>
+    <div class="tag"><b>Ev uzakta. Yol: bir gün, bir gece.</b><br>
+    Bir bedene dokun → ona geçersin. Işıklar nefestir, bedeni tazeler.<br>
+    Kamyon bariyerleri ezer. Düşersen duraktan devam edersin.</div>
     <div class="legend">
       <span><i style="background:#9AA2BC"></i>kuş→direk</span>
       <span><i style="background:#5A8BC4"></i>araba→bariyer</span>
@@ -66,12 +66,12 @@
     <button class="btn primary" id="btnPlay">LEVEL 1 — YOLA ÇIK</button>
     <div class="small" style="color:#F7C566" id="menuBank"></div>
     <button id="btnReset" style="font-family:inherit;font-size:9px;letter-spacing:.1em;background:none;border:none;color:#7A8199;cursor:pointer;text-decoration:underline;padding:4px">İLERLEMEYİ SIFIRLA</button>
-    <div class="small">gündüz parkı → günbatımı → gece şehri → ...</div>
+    <div class="small">sabah → günbatımı → gece → şafak</div>
   </div>
 
   <div class="overlay hidden" id="win">
     <h2 id="winTitle">EVDESİN!</h2>
-    <div class="small">EVE GETİRİLEN PARA</div>
+    <div class="small">EVE KALAN ETAP</div>
     <div id="winScore">0</div>
     <div class="tag" id="winStats"></div>
     <button class="btn primary" id="btnNext">SONRAKİ LEVEL</button>
@@ -421,25 +421,31 @@ document.addEventListener('fullscreenchange',function(){setTimeout(layout,100);}
 
 // ---------- LEVEL ----------
 var level=1;
-function lvParams(n){
-  var p={
-    dist: 420+(n-1)*250,
-    mul: Math.min(0.72+(n-1)*0.07, 1.45),
-    gap: Math.max(130, 280-(n-1)*16),
-    drainMul: n===1?0:Math.min(0.3+(n-2)*0.12, 1.15),
+// ---------- GÜZERGÂH ----------
+// Oyun tek bir yolculuk: memleketten eve, bir gün-bir gece. Eve BİR kez varılır.
+var ROUTE=[
+ {th:0,dist:420, mul:0.72,gap:280,drain:0,   truck:0,   bagMul:1,  name:'Sabah — park yolu'},
+ {th:0,dist:560, mul:0.78,gap:250,drain:0.3, truck:0,   bagMul:1,  name:'Öğle — koru'},
+ {th:0,dist:700, mul:0.84,gap:230,drain:0.45,truck:0.12,bagMul:1,  name:'İkindi — şehir sınırı'},
+ {th:1,dist:800, mul:0.9, gap:215,drain:0.55,truck:0.12,bagMul:1,  name:'Günbatımı — anayol'},
+ {th:1,dist:900, mul:0.95,gap:205,drain:0.65,truck:0.3, bagMul:1,  name:'Alacakaranlık — konvoy',label:'KAMYONLAR'},
+ {th:1,dist:980, mul:1.0, gap:195,drain:0.75,truck:0.15,bagMul:1.6,name:'Akşam — pazar yeri'},
+ {th:2,dist:1060,mul:1.06,gap:185,drain:0.85,truck:0.15,bagMul:1,  name:'Gece — şehir'},
+ {th:2,dist:1140,mul:1.12,gap:175,drain:0.95,truck:0.2, bagMul:1,  name:'Gece yarısı — ışıklar'},
+ {th:2,dist:1220,mul:1.18,gap:165,drain:1.05,truck:0.2, bagMul:1.3,name:'Derin gece — son karanlık'},
+ {th:3,dist:520, mul:0.85,gap:240,drain:0,   truck:0.1, bagMul:1.5,name:'Şafak — ev',label:'SAFAK'}
+];
+var STAGES=ROUTE.length;
+var ROUTE_REST=[];(function(){var r=0;for(var i=STAGES-1;i>=0;i--){ROUTE_REST[i]=r;r+=ROUTE[i].dist;}})();
+function routeParams(n){
+  var r=ROUTE[Math.min(n,STAGES)-1];
+  return {
+    dist:r.dist, mul:r.mul, gap:r.gap, drainMul:r.drain,
     lanes: n===1?['runner','car']:n===2?['runner','car','bike']:['bird','car','bike','runner'],
-    truckChance: n>=3?0.12:0,
-    orbRich:false, noOrbs:false, bagMul:1, mutName:''
+    truckChance:r.truck, bagMul:r.bagMul, label:r.label||'', name:r.name, th:r.th
   };
-  if(n>=5){ // her level bir mutasyon: kural değişir, sadece sayılar değil
-    var m=(n-5)%3;
-    if(m===0){p.truckChance=0.3;p.mutName='KAMYONLAR';}
-    else if(m===1){p.orbRich=true;p.mutName='BOL PARA';}
-    else{p.noOrbs=true;p.bagMul=2.5;p.mutName='KESE GUNU';}
-  }
-  return p;
 }
-var LV=lvParams(1);
+var LV=routeParams(1);
 
 // ---------- dünya ----------
 var LANES=['bird','car','bike','runner'];
@@ -450,48 +456,46 @@ var DRAIN={runner:1/5.5,bike:1/4.5,bird:1/4.2,car:1/3.6,truck:1/3.2};
 var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
-var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
-var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null,arrivalPop=null;
+var orbs,orbGen,reviveUsed,invulnT,freshT,tutHint=false;
+var cpX,cpReached,dropPile,deathSettle=null,retryInfo=null,arrivalPop=null;
 var isFinal=false,finalDone=false;
-var HOUSE_TH=[10,30,60,100,150,210]; // ev süsü eşikleri (bankalanan para)
-var HOUSE_PERKS=[ // her süs bir oynanış perki: ev = güç
- {n:'ÇİT',d:'bedenler %15 geç yorulur'},
- {n:'ÇİÇEKLER',d:'keseler +1 para'},
- {n:'KEDİ',d:'paraları uzaktan çeker'},
- {n:'IŞIKLAR',d:'bayrakta paran güvende'},
- {n:'AĞAÇ',d:'son saniye kaçışı +5 para'},
- {n:'ŞAFAK',d:'final yolculuğu'}];
+var MOM_TH=[3,7,12,17,22,27]; // toplam an eşikleri: evin geri gelen parçaları
 var HOUSE_MEMS=[
- 'Çit dikildi — bahçenin artık sınırı var.',
- 'Çiçekler açtı — yol artık eve çıkıyor.',
- 'Kedi geri döndü — biri seni bekliyor.',
- 'Işıklar yandı — pencereler sıcak.',
- 'Ağaç kök saldı — cesaretin de.',
- 'Ev tamamlandı — şafak seni çağırıyor.'];
+ 'Çiti hatırladın — bahçenin sınırı geri geldi.',
+ 'Çiçekleri hatırladın — yol yeniden eve çıkıyor.',
+ 'Kediyi hatırladın — biri seni bekliyor.',
+ 'Işıkları hatırladın — pencereler yeniden sıcak.',
+ 'Ağacı hatırladın — gölgesi avluya düştü.',
+ 'Her şeyi hatırladın — şafak seni çağırıyor.'];
 function houseTier(){
-  var t=0;
-  for(var i=0;i<HOUSE_TH.length;i++)if(bankedCoins>=HOUSE_TH[i])t++;
+  var t=0,tot=momTotal();
+  for(var i=0;i<MOM_TH.length;i++)if(tot>=MOM_TH[i])t++;
   return t;
 }
 
 // ---------- kayıt (localStorage) ----------
-var SAVE_KEY='ruhkosucusu.save.v1';
-var savedLevel=1,bankedCoins=0;
+var SAVE_KEY='ruhkosucusu.save.v2';
+var savedLevel=1;
+var moms={}; // etap -> bulunan an (0-3)
+function momTotal(){var t=0;for(var k in moms)t+=moms[k];return t;}
 function loadSave(){
   var raw=null;
   try{raw=localStorage.getItem(SAVE_KEY);}catch(e){return;}
   if(!raw)return;
   try{
     var d=JSON.parse(raw);
-    if(d&&isFinite(d.level)&&d.level>=1)savedLevel=Math.floor(d.level);
-    if(d&&isFinite(d.coins)&&d.coins>0)bankedCoins=Math.floor(d.coins);
+    if(d&&isFinite(d.level)&&d.level>=1)savedLevel=Math.min(Math.floor(d.level),STAGES);
+    if(d&&d.moms)for(var k in d.moms){
+      var m=Math.floor(d.moms[k]);
+      if(isFinite(m)&&m>0)moms[k]=Math.min(3,m);
+    }
     if(d&&d.fin)finalDone=true;
   }catch(e){}
   level=savedLevel;
 }
 function saveProgress(lv){
-  if(lv>savedLevel)savedLevel=lv;
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({level:savedLevel,coins:bankedCoins,fin:finalDone?1:0}));}catch(e){}
+  if(lv>savedLevel)savedLevel=Math.min(lv,STAGES);
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({v:2,level:savedLevel,moms:moms,fin:finalDone?1:0}));}catch(e){}
 }
 
 function newHost(type,x){
@@ -499,23 +503,17 @@ function newHost(type,x){
           v:Math.floor(Math.random()*3),st:1,bag:0};
 }
 function reset(){
-  isFinal=(houseTier()>=6&&!finalDone);
-  if(isFinal){ // zafer turu: kısa, yorulmasız, bol paralı
-    LV={dist:420,mul:0.8,gap:260,drainMul:0,lanes:LANES.slice(),
-        truckChance:0.12,orbRich:true,noOrbs:false,bagMul:1.5,mutName:'SAFAK'};
-    TH=DAWN;
-  } else {
-    LV=lvParams(level);
-    TH=THEMES[(level-1)%THEMES.length];
-  }
+  level=Math.max(1,Math.min(level,STAGES));
+  isFinal=(level===STAGES);
+  LV=routeParams(level);
+  TH=LV.th===3?DAWN:THEMES[LV.th];
   makeBackdrops();
   hosts=[];obs={bird:[],car:[],bike:[],runner:[]};
   startX=60; goalX=startX+LV.dist; won=false;
-  cpX=startX+Math.round(LV.dist/2);cpReached=false;securedCoins=0;dropPile=null;
+  cpX=startX+Math.round(LV.dist/2);cpReached=false;dropPile=null;
   var spawnX=startX;
-  if(retryInfo&&retryInfo.level===level){ // aynı level'a dönüş: bayrak + düşen para
+  if(retryInfo&&retryInfo.level===level){ // aynı etaba dönüş: duraktan devam
     if(retryInfo.cp){spawnX=cpX;cpReached=true;}
-    if(retryInfo.drop)dropPile={x:retryInfo.drop.x,amt:retryInfo.drop.amt};
   }
   retryInfo=null;
   gen={bird:spawnX+220,car:spawnX+300,bike:spawnX+260,runner:spawnX+180};
@@ -526,7 +524,7 @@ function reset(){
   spirit=null;lastHost=null;lastHopT=-9;camX=0;warned=false;
   fx={lines:[],rings:[],texts:[],puffs:[],finger:null,miss:[],confetti:[],fly:[]};
   arrivalPop=null;
-  orbs=[];orbGen=spawnX+120;orbsGot=0;orbsTotal=0;runCoins=0;
+  orbs=[];orbGen=spawnX+120;freshT=0;
   reviveUsed=false;invulnT=0;
   t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
@@ -552,7 +550,7 @@ function genLane(l){
   var rt=(rl==='car'&&Math.random()<LV.truckChance*2)?'truck':rl;
   if(rt==='truck')truckSeen=true;
   var nh=newHost(rt,x-90-Math.random()*40);
-  if(Math.random()<bagChance(rt))nh.bag=2+Math.floor(Math.random()*3);
+  if(Math.random()<bagChance(rt))nh.bag=1;
   hosts.push(nh);
   gen[l]=x+LV.gap*(0.9+Math.random()*0.6);
 }
@@ -575,11 +573,9 @@ function hop(target){
   me=null;
   slowT=0.09;shake=Math.max(shake,2);
   swaps++;
-  if(target.bag>0){
-    var got=target.bag+(houseTier()>=2?1:0); // çiçek perki
-    runCoins+=got;
-    fx.texts.push({x:target.x,y:hostYf(target)-16,s:'+'+got,a:1.2,c:'#F7C566'});
-    target.bag=0;
+  if(target.bag>0){ // dinç beden: tam nefes + kısa süre yorulmaz
+    target.bag=0;target.st=1;freshT=2.5;
+    fx.rings.push({x:target.x,y:hostYf(target),r:4,a:1.2});
     SFX.orb();
   }
   SFX.hop();
@@ -663,9 +659,10 @@ function update(dt){
   }
 
   if(invulnT>0)invulnT-=dt;
+  if(freshT>0)freshT-=dt;
 
-  if(LV.drainMul>0&&me&&!spirit){
-    me.st-=DRAIN[me.type]*LV.drainMul*d*(houseTier()>=1?0.85:1); // çit perki
+  if(LV.drainMul>0&&me&&!spirit&&freshT<=0){
+    me.st-=DRAIN[me.type]*LV.drainMul*d;
     if(me.st<0.3&&!warned){warned=true;SFX.tired();}
     if(me.st<=0){die('BEDEN TÜKENDİ');return;}
   }
@@ -684,9 +681,8 @@ function update(dt){
             fx.puffs.push({x:h.x,y:hostYf(h),r:2,a:1});
             if(h.x>camX-10&&h.x<camX+W+10)SFX.crash();
             if(h===lastHost&&(t-lastHopT)<0.6){
-              var cb=houseTier()>=5?5:2; // ağaç perki: cesaret ödülü
-              clutch++;runCoins+=cb;
-              fx.texts.push({x:h.x,y:hostYf(h)-14,s:'+'+cb,a:1,c:'#F7C566'});
+              clutch++;
+              fx.texts.push({x:h.x,y:hostYf(h)-14,s:'SON AN',a:1,c:'#5FD3C4'});
               slowT=0.22;
               fx.rings.push({x:h.x,y:hostYf(h),r:2,a:1.2});
               SFX.clutch();
@@ -709,8 +705,7 @@ function update(dt){
         if(Math.abs(me.x-a[j].x)<a[j].w/2+4){
           if(me.type==='truck'){
             fx.puffs.push({x:a[j].x,y:laneYof('car'),r:2,a:1});
-            fx.texts.push({x:a[j].x,y:laneYof('car')-14,s:'+1',a:1,c:'#F7C566'});
-            smashed++;runCoins+=1;shake=Math.max(shake,4);
+            smashed++;shake=Math.max(shake,4);
             SFX.smash();
             a.splice(j,1);
           } else {die('ÇARPTIN');return;}
@@ -719,18 +714,9 @@ function update(dt){
     }
     if(!cpReached&&me.x>=cpX){
       cpReached=true;
-      if(houseTier()>=4){ // ışıklar perki: bayrağa kadar kazanılan garanti
-        securedCoins=runCoins;
-        fx.texts.push({x:cpX,y:yRunner()-30,s:'PARA GUVENDE',a:1.4,c:'#5FD3C4'});
-      } else fx.texts.push({x:cpX,y:yRunner()-30,s:'BAYRAK',a:1.2,c:'#5FD3C4'});
+      fx.texts.push({x:cpX,y:yRunner()-30,s:'DURAK',a:1.2,c:'#5FD3C4'});
       fx.rings.push({x:cpX,y:yRunner()-10,r:3,a:1});
       SFX.clutch();
-    }
-    if(dropPile&&Math.abs(me.x-dropPile.x)<9){ // düşen paranı geri al
-      runCoins+=dropPile.amt;
-      fx.texts.push({x:me.x,y:hostYf(me)-14,s:'+'+dropPile.amt,a:1.2,c:'#F7C566'});
-      fx.rings.push({x:dropPile.x,y:yRunner()-6,r:3,a:1});
-      SFX.orb();dropPile=null;
     }
     if(me.x>=goalX){winLevel();return;}
   }
@@ -744,23 +730,23 @@ function update(dt){
   });
   // ruh ışıkları
   while(orbGen<camX+W+60){
-    if(orbGen<goalX-80&&!LV.noOrbs){
+    if(orbGen<goalX-80){
       var ol;
-      if(Math.random()<0.5){ // para kararla gelsin: engelli şeride diz
+      if(Math.random()<0.5){ // nefes kararla gelsin: engelli şeride diz
         var risky=LANES.filter(function(l){return !laneFreeAt(l,orbGen+30,90);});
         ol=risky.length?risky[Math.floor(Math.random()*risky.length)]
                        :LANES[Math.floor(Math.random()*4)];
       } else ol=LANES[Math.floor(Math.random()*4)];
-      var cn=LV.orbRich?4:3;
-      for(var oi=0;oi<cn;oi++){orbs.push({x:orbGen+oi*9,lane:ol});orbsTotal++;}
+      for(var oi=0;oi<3;oi++)orbs.push({x:orbGen+oi*9,lane:ol});
     }
-    orbGen+=(LV.orbRich?55:90)+Math.random()*(LV.orbRich?40:70);
+    orbGen+=90+Math.random()*70;
   }
   if(me&&!spirit){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
-      if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<(houseTier()>=3?12:7)){ // kedi perki
-        orbs.splice(io,1);orbsGot++;runCoins++;
-        fx.texts.push({x:me.x,y:hostYf(me)-12,s:'+1',a:1,c:'#F7C566'});
+      if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<9){
+        orbs.splice(io,1);
+        me.st=Math.min(1,me.st+0.4); // nefes: beden tazelenir
+        fx.rings.push({x:ob.x,y:hostYf(me),r:2,a:0.8});
         SFX.orb();
       }
     }
@@ -789,7 +775,7 @@ function update(dt){
     if(LV.truckChance>0&&!truckSeen&&me&&me.x-startX>LV.dist*0.4)type='truck';
     if(type==='truck')truckSeen=true;
     var rh=newHost(type,camX+W+60);
-    if(Math.random()<bagChance(type))rh.bag=2+Math.floor(Math.random()*3);
+    if(Math.random()<bagChance(type))rh.bag=1;
     hosts.push(rh);
   }
 
@@ -833,35 +819,20 @@ function die(reason){
   dead=true;shake=6;
   if(me)fx.puffs.push({x:me.x,y:hostYf(me),r:2,a:1});
   SFX.death();
-  var secured=(cpReached&&houseTier()>=4)?Math.min(securedCoins,runCoins):0;
-  var dropAmt=runCoins-secured;
-  var dx=Math.max(startX+60,Math.min((me?me.x:(lastHost?lastHost.x:startX)),goalX-80));
-  deathSettle={level:level,cp:cpReached,secured:secured,drop:dropAmt,x:dx};
-  document.getElementById('deathReason').textContent='LEVEL '+level+' — '+(reason||'');
-  document.getElementById('deathScore').textContent=
-    dropAmt>0?dropAmt+' PARA YOLDA':'EVDESİN SAYILIR';
+  deathSettle={level:level,cp:cpReached};
+  var pct=Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100);
+  document.getElementById('deathReason').textContent='ETAP '+level+'/'+STAGES+' — '+(reason||'');
+  document.getElementById('deathScore').textContent='%'+pct;
   document.getElementById('deathStats').innerHTML=
-    swaps+' beden · '+clutch+' son saniye · '+smashed+' ezme · '+
-    Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100)+'% yol'+
-    (dropAmt>0?'<br><b style="color:#F7C566">paran seni yolda bekliyor — geri al</b>':'')+
-    (secured>0?'<br><b style="color:#5FD3C4">'+secured+' para bayrakta güvendeydi, eve gitti</b>':'')+
-    (cpReached?'<br>bayraktan devam edeceksin':'');
+    swaps+' beden · '+clutch+' son an · '+smashed+' ezme'+
+    (cpReached?'<br><b style="color:#5FD3C4">duraktan devam edeceksin</b>':'');
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
-function settleDeath(){ // ölüm kesinleşti: güvendeki para bankaya, kalanı yola
+function settleDeath(){
   if(!deathSettle)return;
-  if(deathSettle.secured>0){bankedCoins+=deathSettle.secured;saveProgress(savedLevel);}
-  retryInfo={level:deathSettle.level,cp:deathSettle.cp,
-             drop:deathSettle.drop>0?{x:deathSettle.x,amt:deathSettle.drop}:null};
+  retryInfo={level:deathSettle.level,cp:deathSettle.cp};
   deathSettle=null;
-}
-function nextTierText(){
-  for(var i=0;i<HOUSE_TH.length;i++)
-    if(bankedCoins<HOUSE_TH[i])
-      return ' · sıradaki: <b style="color:#F7C566">'+HOUSE_PERKS[i].n+'</b> ('+
-        HOUSE_PERKS[i].d+') '+bankedCoins+'/'+HOUSE_TH[i];
-  return ' · <b style="color:#5FD3C4">ev tamamlandı!</b>';
 }
 function winLevel(){
   won=true;shake=3;
@@ -872,33 +843,22 @@ function winLevel(){
     vx:(Math.random()-0.5)*40,vy:-20-Math.random()*30,a:1.6,
     c:confCols[ci%4]});
   SFX.win();
-  var tierBefore=houseTier(),tierAfter=tierBefore;
   if(mode!=='auto'){
-    bankedCoins+=runCoins;
-    tierAfter=houseTier();
+    if(isFinal)finalDone=true;
     saveProgress(level+1);
-    var fn=Math.min(runCoins,12); // paralar ruhtan eve uçar
-    for(var fi=0;fi<fn;fi++)
-      fx.fly.push({t:-fi*0.09,x0:goalX-16-Math.random()*18,y0:H-42-Math.random()*26});
-    if(tierAfter>tierBefore)arrivalPop={t:0,done:false};
   }
-  if(isFinal&&mode!=='auto'){finalDone=true;saveProgress(savedLevel);}
   document.getElementById('winTitle').textContent=
-    isFinal?'ŞAFAK — EV TAMAMLANDI':'LEVEL '+level+' — EVDESİN!';
-  document.getElementById('btnNext').textContent=
-    isFinal?'YOLA DEVAM':'SONRAKİ LEVEL';
-  document.getElementById('winScore').textContent=runCoins;
+    isFinal?'EVDESİN.':'ETAP '+level+'/'+STAGES+' — MOLA';
+  document.getElementById('btnNext').textContent=isFinal?'YENİDEN YÜRÜ':'YOLA DEVAM';
+  document.getElementById('winScore').textContent=''+(STAGES-level);
   document.getElementById('winStats').innerHTML=
-    (isFinal?'Ruh huzura erdi — ev ışık dolu, kedi kapıda.<br>'+
-      'Toplam evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b> · yol devam ediyor.<br>':'')+
-    swaps+' beden · '+runCoins+' para eve geldi · '+clutch+' son saniye'+
-    (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>'+nextTierText():'')+
-    (tierAfter>tierBefore?'<br><b style="color:#5FD3C4">YENİ: '+HOUSE_PERKS[tierAfter-1].n+
-      '</b> — '+HOUSE_MEMS[tierAfter-1]:'')+
-    (level===1?'<br><b style="color:#FF4D5A">Bedenler yorulmaya başlıyor — bir bedende takılı kalma!</b>':'');
+    (isFinal?'Bir gün, bir gece — ve kapı açıldı. Ruh huzura erdi.<br>':
+      '<b>'+LV.name+'</b> geride kaldı.<br>sıradaki: <b>'+ROUTE[level].name+'</b><br>')+
+    swaps+' beden · '+clutch+' son an'+
+    (level===1?'<br><b style="color:#FF4D5A">Bundan sonra bedenler yoruluyor — ışıklar nefes verir!</b>':'');
   setTimeout(function(){
     document.getElementById('win').classList.remove('hidden');
-  },1600);
+  },isFinal?1600:900);
 }
 
 // ---------- çizim yardımcıları ----------
@@ -929,6 +889,16 @@ function hostHalf(h){
 function hostSprite(h){
   var fr=getFrames(h);
   return (Math.floor(h.anim)%2===0)?fr.A:fr.B;
+}
+function drawRest(sx){ // mola feneri: etap sonu
+  var gy=H-6;
+  ctx.fillStyle='#5C3E24';ctx.fillRect(sx-1,gy-22,2,22);
+  var glow=((frame>>4)%2===0);
+  ctx.fillStyle=glow?'#FFE9A8':'#F7C566';
+  ctx.fillRect(sx-2,gy-26,4,4);
+  ctx.globalAlpha=0.22;ctx.fillStyle='#FFE9A8';
+  ctx.fillRect(sx-4,gy-28,8,8);ctx.globalAlpha=1;
+  drawText('MOLA',Math.round(sx-textW('MOLA',1)/2),gy-36,'#5FD3C4',1);
 }
 function drawHouse(sx){
   var gy=H-6;
@@ -1047,6 +1017,19 @@ function draw(){
     ctx.globalAlpha=1;
   }
 
+  // ufukta ev: her etapta yaklaşır, sadece finalde sahneye iner
+  if(!isFinal){
+    var hs=1+Math.round((level-1)*0.55);
+    var hxx=Math.round(W*0.78),hby=ROAD-55;
+    ctx.fillStyle=TH.farCol;
+    ctx.fillRect(hxx-hs,hby-hs,hs*2,hs);
+    for(var ri=0;ri<hs;ri++)ctx.fillRect(hxx-hs+ri,hby-hs-1-ri,(hs-ri)*2,1);
+    if(level>=4){ // akşamdan itibaren pencere yanar: gecede evi ışığından tanırsın
+      ctx.fillStyle=((frame>>4)%2===0)?'#FFE9A8':'#F7C566';
+      ctx.fillRect(hxx,hby-Math.max(1,hs>>1),Math.max(1,hs>>2),2);
+    }
+  }
+
   // parallax (tepeler+ağaçlar veya binalar)
   var f1=Math.round((camX*0.25)%W),f2=Math.round((camX*0.5)%W);
   ctx.drawImage(bgFar,-f1,ROAD-56);ctx.drawImage(bgFar,W-f1,ROAD-56);
@@ -1074,7 +1057,10 @@ function draw(){
   ctx.fillStyle=TH.bottom;ctx.fillRect(0,H-6,W,6);
 
   var hx=goalX-camX;
-  if(hx>-30&&hx<W+30)drawHouse(Math.round(hx));
+  if(hx>-30&&hx<W+30){
+    if(isFinal)drawHouse(Math.round(hx));
+    else drawRest(Math.round(hx));
+  }
 
   obs.bird.forEach(function(o){
     var sx=Math.round(o.x-camX);if(sx<-16||sx>W+16)return;
@@ -1112,16 +1098,16 @@ function draw(){
     ctx.fillStyle='#C97B3C';ctx.fillRect(sx-5,H-11,10,2);
   });
 
-  orbs.forEach(function(ob){
+  orbs.forEach(function(ob){ // nefes ışıkları
     var sx=Math.round(ob.x-camX);if(sx<-6||sx>W+6)return;
     var oy=laneYof(ob.lane)-10+(((frame>>3)%2===0)?0:1);
-    ctx.fillStyle='#F7C566';
-    ctx.fillRect(sx-1,oy-2,3,1);
-    ctx.fillRect(sx-2,oy-1,5,3);
-    ctx.fillStyle='#C9913A';
-    ctx.fillRect(sx-1,oy+2,3,1);
+    ctx.fillStyle='#FFE9A8';
+    ctx.fillRect(sx,oy-2,1,5);ctx.fillRect(sx-2,oy,5,1);
+    ctx.fillStyle='#F5EFE0';
+    ctx.fillRect(sx,oy,1,1);
     if(((frame>>3)+Math.round(ob.x))%2===0){
-      ctx.fillStyle='#FFE9A8';ctx.fillRect(sx-1,oy-1,1,2);
+      ctx.globalAlpha=0.5;ctx.fillStyle='#FFE9A8';
+      ctx.fillRect(sx-1,oy-1,3,3);ctx.globalAlpha=1;
     }
   });
 
@@ -1134,27 +1120,15 @@ function draw(){
       ctx.fillRect(fpx+1,fgy-26,6,4);ctx.fillRect(fpx+1,fgy-22,4,2);
     }
   }
-  if(dropPile){
-    var ppx=Math.round(dropPile.x-camX);
-    if(ppx>=-12&&ppx<=W+12){ // yola düşen para: parlayan kese
-      var ppy=H-28+(((frame>>3)%2===0)?0:1);
-      ctx.fillStyle='#C97B3C';ctx.fillRect(ppx-2,ppy-2,5,5);ctx.fillRect(ppx-1,ppy-3,3,1);
-      ctx.fillStyle='#F7C566';ctx.fillRect(ppx-1,ppy-1,2,2);
-      pixelRing(ppx,ppy,6+((frame>>2)%5),'#F7C566',0.45);
-    }
-  }
   hosts.forEach(function(h){
     if(h===me)return;
     var sx=h.x-camX;if(sx<-24||sx>W+24)return;
     blit(hostSprite(h),sx,hostYf(h));
-    if(h.bag>0){ // zengin beden: kese + parıltı
+    if(h.bag>0){ // dinç beden: ışıklı işaret
       var bx2=Math.round(sx),by2=hostYf(h)-hostHalf(h)-3;
-      ctx.fillStyle='#C97B3C';
-      ctx.fillRect(bx2-1,by2-1,3,3);
-      ctx.fillRect(bx2,by2-2,1,1);
-      ctx.fillStyle='#F7C566';
-      ctx.fillRect(bx2,by2,1,1);
-      if((frame>>3)%2===0){ctx.fillStyle='#FFE9A8';ctx.fillRect(bx2+3,by2-3,1,1);}
+      ctx.fillStyle='#FFE9A8';
+      ctx.fillRect(bx2,by2-2,1,3);ctx.fillRect(bx2-1,by2-1,3,1);
+      if((frame>>3)%2===0){ctx.fillStyle='#F5EFE0';ctx.fillRect(bx2,by2-1,1,1);}
     }
   });
 
@@ -1168,14 +1142,6 @@ function draw(){
     ctx.fillRect(Math.round(mx)-2,top-2,5,1);
     ctx.fillRect(Math.round(mx)-1,top-1,3,1);
     ctx.fillRect(Math.round(mx),top,1,1);
-    if(runCoins>0){ // para kesesi ruhla gezer
-      var kbx=Math.round(mx)+4;
-      ctx.fillStyle='#C97B3C';
-      ctx.fillRect(kbx,top-1,3,3);
-      ctx.fillRect(kbx+1,top-2,1,1);
-      ctx.fillStyle='#F7C566';
-      ctx.fillRect(kbx+1,top,1,1);
-    }
     if(LV.drainMul>0){
       var bw=9,fill=Math.max(0,Math.round(me.st*bw));
       ctx.fillStyle='#14172B';ctx.fillRect(Math.round(mx)-4,top-6,bw,2);
@@ -1197,12 +1163,6 @@ function draw(){
     ctx.fillRect(Math.round(sx)-3,Math.round(sy),1,1);
     ctx.fillRect(Math.round(sx)+3,Math.round(sy),1,1);
     ctx.globalAlpha=1;
-    if(runCoins>0){
-      ctx.fillStyle='#C97B3C';
-      ctx.fillRect(Math.round(sx)+3,Math.round(sy)-3,3,3);
-      ctx.fillStyle='#F7C566';
-      ctx.fillRect(Math.round(sx)+4,Math.round(sy)-2,1,1);
-    }
   }
 
   fx.fly.forEach(function(f){
@@ -1241,15 +1201,13 @@ function draw(){
   if(mode!=='idle'){
     var hudCol=(TH.celestial==='sun')?'#14172B':'#F5EFE0';
     var hudMut=(TH.celestial==='sun')?'#2E3A44':'#7A8199';
-    ctx.fillStyle='#F7C566';
-    ctx.fillRect(6,7,5,6);ctx.fillRect(7,6,3,1);ctx.fillRect(7,13,3,1);
-    ctx.fillStyle='#FFE9A8';ctx.fillRect(8,9,1,2);
-    drawText(''+runCoins,15,6,'#F7C566',2);
-    drawText('LV '+level,6,20,hudMut,1);
+    var kalan=Math.max(0,Math.round((goalX-(me?me.x:(spirit?spirit.fx:startX)))+ROUTE_REST[level-1]));
+    drawText('EVE '+kalan,6,6,'#F7C566',2);
+    drawText('ETAP '+level,6,20,hudMut,1);
     var lbl=(mode==='auto')?'DEMO':'TAP=SWAP';
     drawText(lbl,W-6-textW(lbl,1),6,hudMut,1);
-    if(LV.mutName&&t<4&&((frame>>4)%4!==3))
-      drawText(LV.mutName,Math.round((W-textW(LV.mutName,2))/2),30,'#F7C566',2);
+    if(LV.label&&t<4&&((frame>>4)%4!==3))
+      drawText(LV.label,Math.round((W-textW(LV.label,2))/2),30,'#F7C566',2);
     if(tutHint&&((frame>>3)%2===0))
       drawText('DOKUN',Math.round((W-textW('DOKUN',2))/2),18,hudCol,2);
 
@@ -1274,20 +1232,15 @@ function loop(now){
   var dt=Math.min((now-last)/1000,0.033);last=now;
   if(mode!=='idle'&&!dead&&!won)update(dt);
   else if(mode==='play'&&won&&!dead)updateFx(dt);
-  if(mode==='idle')camX=goalX-Math.round(W*0.62);
+  if(mode==='idle')camX=isFinal?goalX-Math.round(W*0.62):startX-Math.round(W*0.3);
   draw();
   requestAnimationFrame(loop);
 }
 function syncPlayBtn(){
   document.getElementById('btnPlay').textContent=
-    (houseTier()>=6&&!finalDone)?'ŞAFAK — SON YOLCULUK':'LEVEL '+level+' — YOLA ÇIK';
-  var t='EVDEKİ PARA: '+bankedCoins;
-  for(var i=0;i<HOUSE_TH.length;i++)
-    if(bankedCoins<HOUSE_TH[i]){
-      t+=' · SIRADAKİ: '+HOUSE_PERKS[i].n+' — '+HOUSE_PERKS[i].d+' ('+bankedCoins+'/'+HOUSE_TH[i]+')';
-      break;
-    }
-  if(bankedCoins>=HOUSE_TH[HOUSE_TH.length-1])t+=' · EV TAMAMLANDI';
+    (level>=STAGES)?'ŞAFAK — SON ETAP':'ETAP '+level+'/'+STAGES+' — YOLA ÇIK';
+  var t='EVE KALAN: '+(STAGES-level+1)+' ETAP';
+  if(finalDone)t+=' · yol bir kez yüründü';
   document.getElementById('menuBank').textContent=t;
 }
 loadSave();syncPlayBtn();
@@ -1309,7 +1262,9 @@ function start(m){
 }
 document.getElementById('btnPlay').onclick=function(){start('play')};
 document.getElementById('btnNext').onclick=function(){
-  level++;saveProgress(level);start('play');
+  if(isFinal&&won){level=1;savedLevel=1;} // yol yeniden yürünür; anılar kalır
+  else level++;
+  saveProgress(level);start('play');
 };
 document.getElementById('btnAgain').onclick=function(){settleDeath();start('play')};
 document.getElementById('btnMenu1').onclick=function(){
@@ -1355,7 +1310,7 @@ document.getElementById('btnReset').onclick=function(){
     return;
   }
   clearTimeout(resetT);resetArm=false;
-  savedLevel=1;bankedCoins=0;level=1;finalDone=false;
+  savedLevel=1;level=1;finalDone=false;moms={};
   try{localStorage.removeItem(SAVE_KEY);}catch(e){}
   reset();syncPlayBtn();
   b.textContent='İLERLEMEYİ SIFIRLA';b.style.color='#7A8199';
