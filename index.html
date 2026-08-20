@@ -419,16 +419,16 @@ function lvParams(n){
     dist: 420+(n-1)*250,
     mul: Math.min(0.72+(n-1)*0.07, 1.45),
     gap: Math.max(130, 280-(n-1)*16),
-    drainMul: n<4?0:Math.min(0.55+(n-4)*0.1, 1.15),
+    drainMul: n===1?0:Math.min(0.3+(n-2)*0.12, 1.15),
     lanes: n===1?['runner','car']:n===2?['runner','car','bike']:['bird','car','bike','runner'],
     truckChance: n>=3?0.12:0,
-    orbRich:false, mutName:''
+    orbRich:false, noOrbs:false, bagMul:1, mutName:''
   };
   if(n>=5){ // her level bir mutasyon: kural değişir, sadece sayılar değil
     var m=(n-5)%3;
     if(m===0){p.truckChance=0.3;p.mutName='KAMYONLAR';}
     else if(m===1){p.orbRich=true;p.mutName='BOL PARA';}
-    else{p.drainMul=Math.min(p.drainMul*1.45,1.6);p.gap+=24;p.mutName='YORGUNLUK';}
+    else{p.noOrbs=true;p.bagMul=2.5;p.mutName='KESE GUNU';}
   }
   return p;
 }
@@ -444,7 +444,7 @@ var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
-var HOUSE_TH=[10,35,75,140,220,330]; // ev süsü eşikleri (bankalanan para)
+var HOUSE_TH=[10,30,60,100,150,210]; // ev süsü eşikleri (bankalanan para)
 function houseTier(){
   var t=0;
   for(var i=0;i<HOUSE_TH.length;i++)if(bankedCoins>=HOUSE_TH[i])t++;
@@ -491,6 +491,11 @@ function reset(){
   reviveUsed=false;invulnT=0;
   t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
+function bagChance(type){
+  // araba: hızlı+zengin ama riskli; kamyon engellere ölümsüz, ucuz kese olmasın
+  var c=type==='car'?0.25:type==='truck'?0.08:0.10;
+  return Math.min(0.9,c*LV.bagMul);
+}
 function laneFreeAt(l,x,rad){
   var a=obs[l];
   for(var i=0;i<a.length;i++)if(Math.abs(a[i].x-x)<rad)return false;
@@ -508,7 +513,7 @@ function genLane(l){
   var rt=(rl==='car'&&Math.random()<LV.truckChance*2)?'truck':rl;
   if(rt==='truck')truckSeen=true;
   var nh=newHost(rt,x-90-Math.random()*40);
-  if(Math.random()<0.15)nh.bag=2+Math.floor(Math.random()*3);
+  if(Math.random()<bagChance(rt))nh.bag=2+Math.floor(Math.random()*3);
   hosts.push(nh);
   gen[l]=x+LV.gap*(0.9+Math.random()*0.6);
 }
@@ -683,8 +688,13 @@ function update(dt){
   });
   // ruh ışıkları
   while(orbGen<camX+W+60){
-    if(orbGen<goalX-80){
-      var ol=LANES[Math.floor(Math.random()*4)];
+    if(orbGen<goalX-80&&!LV.noOrbs){
+      var ol;
+      if(Math.random()<0.5){ // para kararla gelsin: engelli şeride diz
+        var risky=LANES.filter(function(l){return !laneFreeAt(l,orbGen+30,90);});
+        ol=risky.length?risky[Math.floor(Math.random()*risky.length)]
+                       :LANES[Math.floor(Math.random()*4)];
+      } else ol=LANES[Math.floor(Math.random()*4)];
       var cn=LV.orbRich?4:3;
       for(var oi=0;oi<cn;oi++){orbs.push({x:orbGen+oi*9,lane:ol});orbsTotal++;}
     }
@@ -723,7 +733,7 @@ function update(dt){
     if(LV.truckChance>0&&!truckSeen&&me&&me.x-startX>LV.dist*0.4)type='truck';
     if(type==='truck')truckSeen=true;
     var rh=newHost(type,camX+W+60);
-    if(Math.random()<0.15)rh.bag=2+Math.floor(Math.random()*3);
+    if(Math.random()<bagChance(type))rh.bag=2+Math.floor(Math.random()*3);
     hosts.push(rh);
   }
 
@@ -781,7 +791,7 @@ function winLevel(){
   document.getElementById('winStats').innerHTML=
     swaps+' beden · '+runCoins+' para eve geldi · '+clutch+' son saniye'+
     (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>'+nextTierText():'')+
-    (level===3?'<br><b style="color:#FF4D5A">Dikkat: bundan sonra bedenler yoruluyor!</b>':'');
+    (level===1?'<br><b style="color:#FF4D5A">Bedenler yorulmaya başlıyor — bir bedende takılı kalma!</b>':'');
   setTimeout(function(){
     document.getElementById('win').classList.remove('hidden');
     if(mode==='auto'){
