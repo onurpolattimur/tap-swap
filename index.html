@@ -444,21 +444,21 @@ var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
-var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null,shield=0,arrivalPop=null;
+var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null,arrivalPop=null;
 var HOUSE_TH=[10,30,60,100,150,210]; // ev süsü eşikleri (bankalanan para)
 var HOUSE_PERKS=[ // her süs bir oynanış perki: ev = güç
  {n:'ÇİT',d:'bedenler %15 geç yorulur'},
  {n:'ÇİÇEKLER',d:'keseler +1 para'},
  {n:'KEDİ',d:'paraları uzaktan çeker'},
  {n:'IŞIKLAR',d:'bayrakta paran güvende'},
- {n:'AĞAÇ',d:'her run 1 kalkan'},
+ {n:'AĞAÇ',d:'son saniye kaçışı +5 para'},
  {n:'ŞAFAK',d:'final yolculuğu'}];
 var HOUSE_MEMS=[
  'Çit dikildi — bahçenin artık sınırı var.',
  'Çiçekler açtı — yol artık eve çıkıyor.',
  'Kedi geri döndü — biri seni bekliyor.',
  'Işıklar yandı — pencereler sıcak.',
- 'Ağaç kök saldı — gölgesi avluya düştü.',
+ 'Ağaç kök saldı — cesaretin de.',
  'Ev tamamlandı — şafak seni çağırıyor.'];
 function houseTier(){
   var t=0;
@@ -512,7 +512,6 @@ function reset(){
   arrivalPop=null;
   orbs=[];orbGen=spawnX+120;orbsGot=0;orbsTotal=0;runCoins=0;
   reviveUsed=false;invulnT=0;
-  shield=(houseTier()>=5)?1:0; // ağaç perki
   t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
 function bagChance(type){
@@ -669,8 +668,9 @@ function update(dt){
             fx.puffs.push({x:h.x,y:hostYf(h),r:2,a:1});
             if(h.x>camX-10&&h.x<camX+W+10)SFX.crash();
             if(h===lastHost&&(t-lastHopT)<0.6){
-              clutch++;runCoins+=2;
-              fx.texts.push({x:h.x,y:hostYf(h)-14,s:'+2',a:1,c:'#F7C566'});
+              var cb=houseTier()>=5?5:2; // ağaç perki: cesaret ödülü
+              clutch++;runCoins+=cb;
+              fx.texts.push({x:h.x,y:hostYf(h)-14,s:'+'+cb,a:1,c:'#F7C566'});
               slowT=0.22;
               fx.rings.push({x:h.x,y:hostYf(h),r:2,a:1.2});
               SFX.clutch();
@@ -697,13 +697,6 @@ function update(dt){
             smashed++;runCoins+=1;shake=Math.max(shake,4);
             SFX.smash();
             a.splice(j,1);
-          } else if(shield>0){ // ağaç perki: kalkan çarpışmayı yer
-            shield=0;a.splice(j,1);
-            fx.puffs.push({x:me.x,y:hostYf(me),r:2,a:1});
-            fx.rings.push({x:me.x,y:hostYf(me),r:3,a:1.2});
-            fx.texts.push({x:me.x,y:hostYf(me)-16,s:'KALKAN',a:1.2,c:'#5FD3C4'});
-            invulnT=0.9;shake=Math.max(shake,4);
-            SFX.smash();
           } else {die('ÇARPTIN');return;}
         }
       }
@@ -1153,7 +1146,6 @@ function draw(){
     ctx.fillRect(Math.round(mx)-2,top-2,5,1);
     ctx.fillRect(Math.round(mx)-1,top-1,3,1);
     ctx.fillRect(Math.round(mx),top,1,1);
-    if(shield>0&&((frame>>3)%2===0))pixelRing(mx,myy,hostHalf(me)+3,'#5FD3C4',0.35);
     if(runCoins>0){ // para kesesi ruhla gezer
       var kbx=Math.round(mx)+4;
       ctx.fillStyle='#C97B3C';
