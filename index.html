@@ -466,6 +466,7 @@ var orbs,orbGen,reviveUsed,invulnT,freshT,tutHint=false;
 var dropPile,deathSettle=null,arrivalPop=null;
 var bigMoms=[],carriedIdx=[],trailH=[];
 var curBiome=0,biomeFlashT=0,finalDone=false;
+var recCrossed=false,catFollowT=0;
 var isFinal=false; // son biyomda mıyız (kutsal final)
 var MOM_TH=[3,7,12,17,22,27]; // eve ulaşan an eşikleri: evin geri gelen parçaları
 var HOUSE_MEMS=[
@@ -533,7 +534,7 @@ function reset(){
   TH=LV.th===3?DAWN:THEMES[LV.th];
   makeBackdrops();biomeFlashT=3.5;
   hosts=[];obs={bird:[],car:[],bike:[],runner:[]};
-  dropPile=null;
+  dropPile=null;recCrossed=false;catFollowT=0;
   bigMoms=[];carriedIdx=[];trailH=[];
   for(var b=0;b<STAGES;b++){ // yol boyu an noktaları (eve gidenler bir daha doğmaz)
     var b0=startX+(b>0?BND[b-1]:0),bl=ROUTE[b].dist;
@@ -557,9 +558,10 @@ function reset(){
   t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
 function bagChance(type){
-  // araba: hızlı+zengin ama riskli; kamyon engellere ölümsüz, ucuz kese olmasın
+  // araba: hızlı+zengin ama riskli; kamyon engellere ölümsüz, ucuz olmasın
   var c=type==='car'?0.25:type==='truck'?0.08:0.10;
-  return Math.min(0.9,c*LV.bagMul*(giftOn(4)?1.5:1)); // anayol hediyesi
+  var f=(me&&bestRel>120&&me.x-startX>bestRel)?1.5:1; // sınır ötesi
+  return Math.min(0.9,c*LV.bagMul*f*(giftOn(4)?1.5:1)); // anayol hediyesi
 }
 function laneFreeAt(l,x,rad){
   var a=obs[l];
@@ -692,6 +694,7 @@ function update(dt){
   if(invulnT>0)invulnT-=dt;
   if(freshT>0)freshT-=dt;
   if(biomeFlashT>0)biomeFlashT-=dt;
+  if(catFollowT>0)catFollowT-=dt;
 
   if(LV.drainMul>0&&me&&!spirit&&freshT<=0){
     me.st-=DRAIN[me.type]*LV.drainMul*d*(giftOn(2)?0.85:1); // koru hediyesi
@@ -743,6 +746,13 @@ function update(dt){
           } else {die('ÇARPTIN');return;}
         }
       }
+    }
+    if(!recCrossed&&bestRel>120&&me.x-startX>bestRel){
+      recCrossed=true;catFollowT=3; // kedi bir süre eşlik eder
+      fx.texts.push({x:me.x,y:hostYf(me)-22,s:'REKOR',a:1.5,c:'#FFE9A8'});
+      fx.rings.push({x:me.x,y:hostYf(me),r:4,a:1.4});
+      fx.rings.push({x:me.x,y:hostYf(me),r:9,a:1});
+      SFX.win();
     }
     var nb=biomeAt(me.x);
     if(nb!==curBiome){ // biyom sınırı: fener — taşınan anlar eve gönderilir
@@ -800,6 +810,7 @@ function update(dt){
   // ruh ışıkları
   while(orbGen<camX+W+60){
     if(orbGen<goalX-80){
+      var frontier=(bestRel>120&&orbGen-startX>bestRel); // sınır ötesi: keşif payı
       var ol;
       if(Math.random()<0.5){ // nefes kararla gelsin: engelli şeride diz
         var risky=LANES.filter(function(l){return !laneFreeAt(l,orbGen+30,90);});
@@ -808,7 +819,7 @@ function update(dt){
       } else ol=LANES[Math.floor(Math.random()*4)];
       for(var oi=0;oi<3;oi++)orbs.push({x:orbGen+oi*9,lane:ol});
     }
-    orbGen+=90+Math.random()*70;
+    orbGen+=(frontier?50:90)+Math.random()*(frontier?40:70);
   }
   if(me&&!spirit){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
@@ -1146,6 +1157,20 @@ function draw(){
   for(var lb=0;lb<STAGES-1;lb++){ // biyom fenerleri
     var lxx=startX+BND[lb]-camX;
     if(lxx>-16&&lxx<W+16)drawRest(Math.round(lxx));
+  }
+  if(bestRel>120&&mode!=='idle'){ // rekor: bayrak + bekleyen kedi
+    var rxx=Math.round(startX+bestRel-camX);
+    if(rxx>-16&&rxx<W+16){
+      var rgy=H-6;
+      ctx.fillStyle='#D8CDB2';ctx.fillRect(rxx,rgy-24,1,24);
+      ctx.fillStyle='#FFE9A8';
+      ctx.fillRect(rxx+1,rgy-24,6,4);ctx.fillRect(rxx+1,rgy-20,4,2);
+      if(!recCrossed)drawCat(rxx-9,rgy,((frame>>4)%4===0));
+    }
+  }
+  if(catFollowT>0&&me&&mode!=='idle'){ // kedi rekor sonrası eşlik eder
+    var cfx=Math.round(me.x-14-camX);
+    if(cfx>-8&&cfx<W+8)drawCat(cfx,H-6,((frame>>2)%2===0));
   }
 
   obs.bird.forEach(function(o){
