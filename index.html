@@ -36,6 +36,9 @@
   .btn.primary{background:var(--cream);color:var(--ink);font-weight:700}
   #deathScore,#winScore{color:var(--cream);font-size:34px;font-weight:700;text-shadow:2px 2px 0 #1B2136}
   .small{color:var(--mut);font-size:9px;letter-spacing:.12em}
+  #teach{position:absolute;top:16%;left:0;right:0;text-align:center;
+    color:var(--cream);font-size:11px;letter-spacing:.08em;text-shadow:1px 1px 0 #1B2136;
+    opacity:0;transition:opacity .6s;pointer-events:none;z-index:4}
   .corner{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:5}
   .cbtn{font-family:inherit;font-size:12px;padding:7px 10px;
     border:2px solid #2A3350;background:rgba(11,14,26,.8);color:var(--cream);cursor:pointer}
@@ -45,6 +48,7 @@
 <body>
 <div id="wrap"><div id="stage">
   <canvas id="c"></canvas>
+  <div id="teach"></div>
 
   <div class="corner">
     <button class="cbtn" id="sndBtn" title="Ses">🔊</button>
@@ -472,6 +476,7 @@ var curBiome=0,biomeFlashT=0,finalDone=false;
 var recCrossed=false,catFollowT=0;
 var chain=0,hopClutch=false,goldTimer=0,goldPowerT=0,missedGold=false;
 var chainBest=0,runMaxChain=0;
+var soulFree=null,nightsWalked=0,teachT=null;
 var sealPromptLb=-1,forceStart=false,nightBonus=false;
 var isFinal=false; // son biyomda mıyız (kutsal final)
 var MOM_TH=[3,7,12,17,22,27]; // eve ulaşan an eşikleri: evin geri gelen parçaları
@@ -510,6 +515,7 @@ function loadSave(){
     if(d&&isFinite(d.bestRel))bestRel=Math.max(0,Math.min(Math.floor(d.bestRel),TOTAL));
     if(d&&isFinite(d.momsHome))momsHome=Math.max(0,Math.floor(d.momsHome));
     if(d&&isFinite(d.chainBest))chainBest=Math.max(0,Math.floor(d.chainBest));
+    if(d&&isFinite(d.nights))nightsWalked=Math.max(0,Math.floor(d.nights));
     if(d&&d.spots)for(var k in d.spots)spotsGone[k]=1;
     if(d&&d.pile&&isFinite(d.pile.rel)&&d.pile.idxs)
       savedPile={rel:d.pile.rel,idxs:d.pile.idxs.slice(0,30)};
@@ -519,7 +525,7 @@ function loadSave(){
 }
 function saveProgress(){
   try{localStorage.setItem(SAVE_KEY,JSON.stringify({
-    v:3,bestRel:Math.round(bestRel),momsHome:momsHome,chainBest:chainBest,spots:spotsGone,
+    v:3,bestRel:Math.round(bestRel),momsHome:momsHome,chainBest:chainBest,nights:nightsWalked,spots:spotsGone,
     pile:savedPile?{rel:savedPile.rel,idxs:savedPile.idxs}:null,
     seals:seals,fin:finalDone?1:0}));}catch(e){}
 }
@@ -556,7 +562,8 @@ function reset(){
   }
   if(savedPile)dropPile={x:startX+savedPile.rel,idxs:savedPile.idxs.slice()};
   gen={bird:spawnX+220,car:spawnX+300,bike:spawnX+260,runner:spawnX+180};
-  me=newHost('runner',spawnX);hosts.push(me);
+  me=null;soulFree={x:spawnX,y:yRunner()-26}; // gece bedensiz başlar: ilk dokunuş seçimdir
+  hosts.push(newHost('runner',spawnX+16));
   hosts.push(newHost('bird',spawnX+50));
   hosts.push(newHost('car',spawnX-30));
   hosts.push(newHost('bike',spawnX+30));
@@ -654,6 +661,17 @@ cv.addEventListener('pointerdown',function(e){
   if(mode!=='play'||dead||won||spirit)return;
   var r=cv.getBoundingClientRect();
   var sx=(e.clientX-r.left)*(W/r.width),sy=(e.clientY-r.top)*(H/r.height);
+  if(soulFree){ // ilk possession: gecenin ilk seçimi
+    var fh2=nearestHost(sx+camX,sy,50);
+    if(fh2){
+      fx.lines.push({x1:soulFree.x,y1:soulFree.y,x2:fh2.x,y2:hostYf(fh2),a:1});
+      fx.rings.push({x:fh2.x,y:hostYf(fh2),r:3,a:1});
+      spirit={fx:soulFree.x,fy:soulFree.y,to:fh2,tt:0,dur:0.16};
+      soulFree=null;lastHost=null;fx.finger=null;
+      SFX.hop();
+    } else {fx.miss.push({x:sx+camX,y:sy,r:2,a:1});SFX.miss();}
+    return;
+  }
   if(sealPromptLb>=0){ // anını fenere bırak: gece artık burada başlar
     var slx2=startX+BND[sealPromptLb];
     if(Math.abs(sx+camX-slx2)<26){
@@ -703,6 +721,16 @@ function autoThink(dt){
 function update(dt){
   // rehber el: level 1, ilk atlayıştan önce, engel yaklaşınca yavaşlat + hedef göster
   var tutSlow=false;
+  if(soulFree&&mode==='play'&&!spirit){
+    var bestF=null,bfs=-1e9;
+    for(var fi3=0;fi3<hosts.length;fi3++){var fh=hosts[fi3];
+      var fsx=fh.x-camX;if(fsx<8||fsx>W-8)continue;
+      var fd=distToObs(fh);if(fd<40)continue;
+      var fscore=fd-Math.abs(fh.x-soulFree.x)*0.3;
+      if(fscore>bfs){bfs=fscore;bestF=fh;}
+    }
+    if(bestF)fx.finger={x:bestF.x,y:hostYf(bestF),a:1};
+  }
   if(mode==='play'&&level===1&&swaps===0&&me&&!spirit&&distToObs(me)<70){
     tutSlow=true;
     var bestT=null,bsT=-1e9;
@@ -716,7 +744,7 @@ function update(dt){
     if(bestT)fx.finger={x:bestT.x,y:hostYf(bestT),a:1};
   }
   tutHint=tutSlow;
-  var ts=(slowT>0)?0.08:(tutSlow?0.25:1);
+  var ts=(slowT>0)?0.08:(tutSlow?0.25:(soulFree?0.15:1));
   if(slowT>0)slowT-=dt;
   var d=dt*ts;
   t+=d;
@@ -860,7 +888,7 @@ function update(dt){
     if(me.x>=goalX){winLevel();return;}
   }
 
-  var anchor=spirit?(spirit.fx+(spirit.to.x-spirit.fx)*(spirit.tt/spirit.dur)):me.x;
+  var anchor=spirit?(spirit.fx+(spirit.to.x-spirit.fx)*(spirit.tt/spirit.dur)):(me?me.x:soulFree.x);
   camX=anchor-Math.round(W*0.24);
   var tpos=spirit?
     {x:anchor,y:spirit.fy+(hostYf(spirit.to)-spirit.fy)*(spirit.tt/spirit.dur)}:
@@ -912,6 +940,17 @@ function update(dt){
         var sl=safeL[Math.floor(Math.random()*safeL.length)];
         hosts.push(newHost(sl,camX+Math.round(W*0.55)));
       }
+    }
+  }
+  if(soulFree){ // bedensiz ruh: bedenler soldan gelip önünden akar
+    var near=0;
+    for(var sf3=0;sf3<hosts.length;sf3++){
+      var hx3=hosts[sf3].x-camX;
+      if(hx3>-40&&hx3<W)near++;
+    }
+    if(near<3&&Math.random()<dt*2.5){
+      var st3=LV.lanes[Math.floor(Math.random()*LV.lanes.length)];
+      hosts.push(newHost(st3,camX-30-Math.random()*20));
     }
   }
   if(goldPowerT>0)goldPowerT-=dt;
@@ -997,6 +1036,12 @@ function die(reason){
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   document.getElementById('btnFromStart').style.display=seals.length?'block':'none';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
+}
+function teach(msg,dur){
+  var el=document.getElementById('teach');
+  el.textContent=msg;el.style.opacity='1';
+  if(teachT)clearTimeout(teachT);
+  teachT=setTimeout(function(){el.style.opacity='0';},dur||3200);
 }
 function settleDeath(){ // gece kesinleşti: rekorlar ve bekleyen anlar yola işlenir
   if(!deathSettle)return;
@@ -1357,6 +1402,20 @@ function draw(){
     }
   });
 
+  if(soulFree&&!dead&&mode!=='idle'){
+    var sfx2=Math.round(soulFree.x-camX);
+    var sfy2=Math.round(soulFree.y)+(((frame>>3)%2===0)?0:1);
+    ctx.fillStyle='#F5EFE0';
+    ctx.fillRect(sfx2-2,sfy2-2,5,1);
+    ctx.fillRect(sfx2-1,sfy2-1,3,1);
+    ctx.fillRect(sfx2,sfy2,1,1);
+    ctx.globalAlpha=0.5;
+    ctx.fillRect(sfx2-3,sfy2+1,1,1);ctx.fillRect(sfx2+3,sfy2+1,1,1);
+    ctx.globalAlpha=1;
+    if((frame>>3)%2===0)
+      drawText('DOKUN',Math.round((W-textW('DOKUN',2))/2),18,
+        (TH.celestial==='sun')?'#14172B':'#F5EFE0',2);
+  }
   if(me&&!dead){
     var mx=me.x-camX,myy=hostYf(me);
     if(!(invulnT>0&&((frame>>2)%2===0)))blit(hostSprite(me),mx,myy);
@@ -1450,7 +1509,7 @@ function draw(){
   if(mode!=='idle'){
     var hudCol=(TH.celestial==='sun')?'#14172B':'#F5EFE0';
     var hudMut=(TH.celestial==='sun')?'#2E3A44':'#7A8199';
-    var kalan=Math.max(0,Math.round(goalX-(me?me.x:(spirit?spirit.fx:startX))));
+    var kalan=Math.max(0,Math.round(goalX-(me?me.x:(spirit?spirit.fx:(soulFree?soulFree.x:startX)))));
     drawText('EVE '+kalan,6,6,'#F7C566',2);
     drawText(LV.label,6,20,hudMut,1);
     if(carriedIdx.length){ // taşınan anlar
@@ -1514,6 +1573,12 @@ function start(m){
   reset();mode=m;dead=false;won=false;
   hideOverlays();
   syncPlayBtn();
+  if(m==='play'){
+    nightsWalked++;saveProgress();
+    if(nightsWalked===1)teach('Dokun → geç. Eski beden kalır.',4200);
+    else if(nightsWalked===2&&bestRel>120)teach('Kedi rekorunda bekliyor — ötesi daha cömert.',3800);
+    else if(nightsWalked===3)teach('Bu gece fenerlere dikkat et: anlarını emanet edebilirsin.',3800);
+  }
 }
 document.getElementById('btnPlay').onclick=function(){start('play')};
 document.getElementById('btnNext').onclick=function(){ // azat sonrası: yeni yürüyüş
