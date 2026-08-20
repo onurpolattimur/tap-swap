@@ -64,7 +64,6 @@
       <span><i style="background:#8B95B5"></i>kamyon→ezer</span>
     </div>
     <button class="btn primary" id="btnPlay">LEVEL 1 — YOLA ÇIK</button>
-    <button class="btn" id="btnAuto">OTOMATİK DEMO — İZLE</button>
     <div class="small" style="color:#F7C566" id="menuBank"></div>
     <button id="btnReset" style="font-family:inherit;font-size:9px;letter-spacing:.1em;background:none;border:none;color:#7A8199;cursor:pointer;text-decoration:underline;padding:4px">İLERLEMEYİ SIFIRLA</button>
     <div class="small">gündüz parkı → günbatımı → gece şehri → ...</div>
@@ -72,12 +71,10 @@
 
   <div class="overlay hidden" id="win">
     <h2 id="winTitle">EVDESİN!</h2>
-    <div id="winStars" style="font-size:22px;letter-spacing:6px;color:#F7C566"></div>
-    <div class="small">LEVEL SKORU</div>
+    <div class="small">EVE GETİRİLEN PARA</div>
     <div id="winScore">0</div>
     <div class="tag" id="winStats"></div>
     <button class="btn primary" id="btnNext">SONRAKİ LEVEL</button>
-    <button class="btn" id="btnShare">PAYLAŞ — PNG</button>
     <button class="btn" id="btnMenu1">MENÜ</button>
   </div>
 
@@ -374,7 +371,6 @@ var SFX={
     vib(40);
   },
   orb:function(){beep(1240,1560,0.06,'triangle',0.12);},
-  comboUp:function(c){beep(520+c*120,520+c*120,0.08,'square',0.16);},
   revive:function(){beep(392,392,0.12,'triangle',0.2);beep(523,523,0.18,'triangle',0.2,AC?AC.currentTime+0.12:0);},
   miss:function(){beep(210,140,0.06,'triangle',0.1);},
   ui:function(){beep(660,660,0.05,'square',0.13);}
@@ -446,9 +442,8 @@ var DRAIN={runner:1/5.5,bike:1/4.5,bird:1/4.2,car:1/3.6,truck:1/3.2};
 
 var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
-var fx,t,score,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
-var orbs,orbGen,orbsGot,orbsTotal,runCoins,combo,comboT,reviveUsed,invulnT,tutHint=false;
-var bestStars={};
+var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
+var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
 var HOUSE_TH=[10,35,75,140,220,330]; // ev süsü eşikleri (bankalanan para)
 function houseTier(){
   var t=0;
@@ -466,17 +461,13 @@ function loadSave(){
   try{
     var d=JSON.parse(raw);
     if(d&&isFinite(d.level)&&d.level>=1)savedLevel=Math.floor(d.level);
-    if(d&&d.stars)for(var k in d.stars){
-      var st=Math.floor(d.stars[k]);
-      if(isFinite(st)&&st>0)bestStars[k]=Math.min(3,st);
-    }
     if(d&&isFinite(d.coins)&&d.coins>0)bankedCoins=Math.floor(d.coins);
   }catch(e){}
   level=savedLevel;
 }
 function saveProgress(lv){
   if(lv>savedLevel)savedLevel=lv;
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({level:savedLevel,stars:bestStars,coins:bankedCoins}));}catch(e){}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({level:savedLevel,coins:bankedCoins}));}catch(e){}
 }
 
 function newHost(type,x){
@@ -497,8 +488,8 @@ function reset(){
   spirit=null;lastHost=null;lastHopT=-9;camX=0;warned=false;
   fx={lines:[],rings:[],texts:[],puffs:[],finger:null,miss:[],confetti:[]};
   orbs=[];orbGen=startX+120;orbsGot=0;orbsTotal=0;runCoins=0;
-  combo=1;comboT=0;reviveUsed=false;invulnT=0;
-  t=0;score=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
+  reviveUsed=false;invulnT=0;
+  t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
 function laneFreeAt(l,x,rad){
   var a=obs[l];
@@ -539,9 +530,7 @@ function hop(target){
   spirit={fx:me.x,fy:fy,to:target,tt:0,dur:0.16};
   me=null;
   slowT=0.09;shake=Math.max(shake,2);
-  if(comboT>0){combo=Math.min(combo+1,5);SFX.comboUp(combo);}else combo=1;
-  comboT=1.5;
-  swaps++;score+=25*combo;
+  swaps++;
   if(target.bag>0){
     runCoins+=target.bag;
     fx.texts.push({x:target.x,y:hostYf(target)-16,s:'+'+target.bag,a:1.2,c:'#F7C566'});
@@ -628,7 +617,6 @@ function update(dt){
     if(spirit.tt>=spirit.dur){me=spirit.to;spirit=null;SFX.arrive();}
   }
 
-  if(comboT>0){comboT-=d;if(comboT<=0)combo=1;}
   if(invulnT>0)invulnT-=dt;
 
   if(LV.drainMul>0&&me&&!spirit){
@@ -651,8 +639,8 @@ function update(dt){
             fx.puffs.push({x:h.x,y:hostYf(h),r:2,a:1});
             if(h.x>camX-10&&h.x<camX+W+10)SFX.crash();
             if(h===lastHost&&(t-lastHopT)<0.6){
-              clutch++;score+=50*combo;
-              fx.texts.push({x:h.x,y:hostYf(h)-14,s:'+'+(50*combo),a:1});
+              clutch++;runCoins+=2;
+              fx.texts.push({x:h.x,y:hostYf(h)-14,s:'+2',a:1,c:'#F7C566'});
               slowT=0.22;
               fx.rings.push({x:h.x,y:hostYf(h),r:2,a:1.2});
               SFX.clutch();
@@ -675,8 +663,8 @@ function update(dt){
         if(Math.abs(me.x-a[j].x)<a[j].w/2+4){
           if(me.type==='truck'){
             fx.puffs.push({x:a[j].x,y:laneYof('car'),r:2,a:1});
-            fx.texts.push({x:a[j].x,y:laneYof('car')-14,s:'+30',a:1});
-            smashed++;score+=30;shake=Math.max(shake,4);
+            fx.texts.push({x:a[j].x,y:laneYof('car')-14,s:'+1',a:1,c:'#F7C566'});
+            smashed++;runCoins+=1;shake=Math.max(shake,4);
             SFX.smash();
             a.splice(j,1);
           } else {die('ÇARPTIN');return;}
@@ -688,7 +676,6 @@ function update(dt){
 
   var anchor=spirit?(spirit.fx+(spirit.to.x-spirit.fx)*(spirit.tt/spirit.dur)):me.x;
   camX=anchor-Math.round(W*0.24);
-  if(me)score+=me.speed*d*0.15;
 
   LANES.forEach(function(l){
     while(gen[l]<camX+W+90)genLane(l);
@@ -707,7 +694,6 @@ function update(dt){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
       if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<7){
         orbs.splice(io,1);orbsGot++;runCoins++;
-        score+=10*combo;
         fx.texts.push({x:me.x,y:hostYf(me)-12,s:'+1',a:1,c:'#F7C566'});
         SFX.orb();
       }
@@ -764,11 +750,10 @@ function die(reason){
   if(me)fx.puffs.push({x:me.x,y:hostYf(me),r:2,a:1});
   SFX.death();
   document.getElementById('deathReason').textContent='LEVEL '+level+' — '+(reason||'');
-  document.getElementById('deathScore').textContent=Math.floor(score);
+  document.getElementById('deathScore').textContent=runCoins+' PARA';
   document.getElementById('deathStats').innerHTML=
     swaps+' beden · '+clutch+' son saniye · '+smashed+' ezme · '+
-    Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100)+'% yol'+
-    (runCoins>0?'<br><b style="color:#F7C566">'+runCoins+' para</b> yolda kaldı':'');
+    Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100)+'% yol';
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
@@ -787,17 +772,12 @@ function winLevel(){
     vx:(Math.random()-0.5)*40,vy:-20-Math.random()*30,a:1.6,
     c:confCols[ci%4]});
   SFX.win();
-  var pct=orbsTotal>0?orbsGot/orbsTotal:1;
-  var stars=1+(pct>=0.5?1:0)+(pct>=0.9?1:0);
   if(mode!=='auto'){
-    if(!bestStars[level]||stars>bestStars[level])bestStars[level]=stars;
     bankedCoins+=runCoins;
     saveProgress(level+1);
   }
-  document.getElementById('winStars').textContent=
-    '★★★'.slice(0,stars)+'☆☆☆'.slice(0,3-stars);
   document.getElementById('winTitle').textContent='LEVEL '+level+' — EVDESİN!';
-  document.getElementById('winScore').textContent=Math.floor(score);
+  document.getElementById('winScore').textContent=runCoins;
   document.getElementById('winStats').innerHTML=
     swaps+' beden · '+runCoins+' para eve geldi · '+clutch+' son saniye'+
     (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>'+nextTierText():'')+
@@ -1123,14 +1103,11 @@ function draw(){
   if(mode!=='idle'){
     var hudCol=(TH.celestial==='sun')?'#14172B':'#F5EFE0';
     var hudMut=(TH.celestial==='sun')?'#2E3A44':'#7A8199';
-    drawText(''+Math.floor(score),6,6,hudCol,2);
-    if(combo>1&&((frame>>3)%2===0))
-      drawText('X'+combo,10+textW(''+Math.floor(score),2),6,'#5FD3C4',2);
-    drawText('LV '+level,6,20,hudMut,1);
     ctx.fillStyle='#F7C566';
-    ctx.fillRect(6,29,4,4);ctx.fillRect(7,28,2,1);ctx.fillRect(7,33,2,1);
-    ctx.fillStyle='#FFE9A8';ctx.fillRect(7,30,1,2);
-    drawText(''+runCoins,14,29,'#F7C566',1);
+    ctx.fillRect(6,7,5,6);ctx.fillRect(7,6,3,1);ctx.fillRect(7,13,3,1);
+    ctx.fillStyle='#FFE9A8';ctx.fillRect(8,9,1,2);
+    drawText(''+runCoins,15,6,'#F7C566',2);
+    drawText('LV '+level,6,20,hudMut,1);
     var lbl=(mode==='auto')?'DEMO':'TAP=SWAP';
     drawText(lbl,W-6-textW(lbl,1),6,hudMut,1);
     if(LV.mutName&&t<4&&((frame>>4)%4!==3))
@@ -1186,15 +1163,11 @@ function start(m){
   syncPlayBtn();
 }
 document.getElementById('btnPlay').onclick=function(){start('play')};
-document.getElementById('btnAuto').onclick=function(){level=1;start('auto')};
 document.getElementById('btnNext').onclick=function(){
-  level++;
-  if(mode!=='auto')saveProgress(level);
-  start(mode==='auto'?'auto':'play');
+  level++;saveProgress(level);start('play');
 };
-document.getElementById('btnAgain').onclick=function(){start(mode==='auto'?'auto':'play')};
+document.getElementById('btnAgain').onclick=function(){start('play')};
 document.getElementById('btnMenu1').onclick=function(){
-  if(mode==='auto')level=savedLevel;
   mode='idle';hideOverlays();
   document.getElementById('menu').classList.remove('hidden');
   syncPlayBtn();
@@ -1219,7 +1192,7 @@ document.getElementById('btnRevive').onclick=function(){
     });
     me=newHost('runner',rx);hosts.push(me);
     reviveUsed=true;dead=false;
-    invulnT=1.2;combo=1;comboT=0;warned=false;
+    invulnT=1.2;warned=false;
     SFX.revive();
   },700);
 };
@@ -1236,27 +1209,11 @@ document.getElementById('btnReset').onclick=function(){
     return;
   }
   clearTimeout(resetT);resetArm=false;
-  savedLevel=1;bankedCoins=0;bestStars={};level=1;
+  savedLevel=1;bankedCoins=0;level=1;
   try{localStorage.removeItem(SAVE_KEY);}catch(e){}
   reset();syncPlayBtn();
   b.textContent='İLERLEMEYİ SIFIRLA';b.style.color='#7A8199';
   SFX.ui();
-};
-document.getElementById('btnShare').onclick=function(){
-  SFX.ui();
-  cv.toBlob(function(blob){
-    if(!blob)return;
-    var file=null;
-    try{file=new File([blob],'ruh-kosucusu.png',{type:'image/png'});}catch(e){}
-    if(file&&navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-      navigator.share({files:[file],title:'Ruh Koşucusu'}).catch(function(){});
-    }else{
-      var a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download='ruh-kosucusu-skor.png';
-      a.click();
-    }
-  });
 };
 })();
 </script>
