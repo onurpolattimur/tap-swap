@@ -476,7 +476,13 @@ function houseTier(){
 
 // ---------- kayıt (localStorage) ----------
 var SAVE_KEY='ruhkosucusu.save.v2';
-var savedLevel=1;
+var savedLevel=1,bestStage=0;
+var GIFTS={ // yolun hediyeleri: eşikle değil VARIŞLA açılır, NG+ da kalır
+ 2:'Koru seni tanıdı — bedenler geç yorulur.',
+ 4:'Anayol cömerttir — dinç bedenler daha sık çıkar.',
+ 6:'Pazar yerinin ışığı — nefesler daha güçlü, daha yakından çeker.',
+ 8:'Şehir ışıkları — durakta bedenin tamamen tazelenir.'};
+function giftOn(n){return bestStage>=n;}
 var moms={}; // etap -> bulunan an (0-3)
 function momTotal(){var t=0;for(var k in moms)t+=moms[k];return t;}
 function loadSave(){
@@ -490,13 +496,14 @@ function loadSave(){
       var m=Math.floor(d.moms[k]);
       if(isFinite(m)&&m>0)moms[k]=Math.min(3,m);
     }
+    if(d&&isFinite(d.best))bestStage=Math.min(Math.floor(d.best),STAGES);
     if(d&&d.fin)finalDone=true;
   }catch(e){}
   level=savedLevel;
 }
 function saveProgress(lv){
   if(lv>savedLevel)savedLevel=Math.min(lv,STAGES);
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({v:2,level:savedLevel,moms:moms,fin:finalDone?1:0}));}catch(e){}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({v:2,level:savedLevel,best:bestStage,moms:moms,fin:finalDone?1:0}));}catch(e){}
 }
 
 function newHost(type,x){
@@ -538,7 +545,7 @@ function reset(){
 function bagChance(type){
   // araba: hızlı+zengin ama riskli; kamyon engellere ölümsüz, ucuz kese olmasın
   var c=type==='car'?0.25:type==='truck'?0.08:0.10;
-  return Math.min(0.9,c*LV.bagMul);
+  return Math.min(0.9,c*LV.bagMul*(giftOn(4)?1.5:1)); // anayol hediyesi
 }
 function laneFreeAt(l,x,rad){
   var a=obs[l];
@@ -669,7 +676,7 @@ function update(dt){
   if(freshT>0)freshT-=dt;
 
   if(LV.drainMul>0&&me&&!spirit&&freshT<=0){
-    me.st-=DRAIN[me.type]*LV.drainMul*d;
+    me.st-=DRAIN[me.type]*LV.drainMul*d*(giftOn(2)?0.85:1); // koru hediyesi
     if(me.st<0.3&&!warned){warned=true;SFX.tired();}
     if(me.st<=0){die('BEDEN TÜKENDİ');return;}
   }
@@ -722,6 +729,10 @@ function update(dt){
     if(!cpReached&&me.x>=cpX){
       cpReached=true;
       fx.texts.push({x:cpX,y:yRunner()-30,s:'DURAK',a:1.2,c:'#5FD3C4'});
+      if(giftOn(8)){ // şehir ışıkları hediyesi
+        me.st=1;
+        fx.texts.push({x:cpX,y:yRunner()-38,s:'NEFES',a:1.2,c:'#FFE9A8'});
+      }
       fx.rings.push({x:cpX,y:yRunner()-10,r:3,a:1});
       SFX.clutch();
     }
@@ -769,9 +780,9 @@ function update(dt){
   }
   if(me&&!spirit){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
-      if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<9){
+      if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<(giftOn(6)?12:9)){
         orbs.splice(io,1);
-        me.st=Math.min(1,me.st+0.4); // nefes: beden tazelenir
+        me.st=Math.min(1,me.st+(giftOn(6)?0.55:0.4)); // nefes: beden tazelenir
         fx.rings.push({x:ob.x,y:hostYf(me),r:2,a:0.8});
         SFX.orb();
       }
@@ -855,7 +866,7 @@ function die(reason){
   document.getElementById('deathStats').innerHTML=
     swaps+' beden · '+clutch+' son an · '+smashed+' ezme'+
     (carried>0?'<br><b style="color:#FFE9A8">'+carried+' an yolda seni bekliyor — geri al</b>':'')+
-    (cpReached?'<br><b style="color:#5FD3C4">duraktan devam edeceksin</b>':'');
+    (cpReached?'<br><b style="color:#5FD3C4">duraktan devam edeceksin</b>':'<br>kedi molada bekliyor');
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
@@ -874,9 +885,10 @@ function winLevel(){
     vx:(Math.random()-0.5)*40,vy:-20-Math.random()*30,a:1.6,
     c:confCols[ci%4]});
   SFX.win();
-  var tierBefore=houseTier();
+  var tierBefore=houseTier(),newGift=false;
   if(mode!=='auto'){
     if(carried>(moms[level]||0))moms[level]=carried;
+    if(level>bestStage){bestStage=level;if(GIFTS[level])newGift=true;}
     if(isFinal)finalDone=true;
     saveProgress(level+1);
     for(var fi=0;fi<carried;fi++) // anlar fenere süzülür
@@ -893,6 +905,7 @@ function winLevel(){
     'bu etapta <b style="color:#FFE9A8">'+carried+'/3 an</b> · toplam '+momTotal()+'/30 · '+
     swaps+' beden · '+clutch+' son an'+
     (houseTier()>tierBefore?'<br><b style="color:#5FD3C4">'+HOUSE_MEMS[houseTier()-1]+'</b>':'')+
+    (newGift?'<br><b style="color:#F7C566">YOLUN HEDİYESİ: '+GIFTS[level]+'</b>':'')+
     (level===1?'<br><b style="color:#FF4D5A">Bundan sonra bedenler yoruluyor — ışıklar nefes verir!</b>':'');
   setTimeout(function(){
     document.getElementById('win').classList.remove('hidden');
@@ -928,7 +941,14 @@ function hostSprite(h){
   var fr=getFrames(h);
   return (Math.floor(h.anim)%2===0)?fr.A:fr.B;
 }
-function drawRest(sx){ // mola feneri: etap sonu
+function drawCat(sx,gy,hop){
+  var ch=hop?1:0;
+  ctx.fillStyle='#241C2E';
+  ctx.fillRect(sx,gy-5-ch,5,4);
+  ctx.fillRect(sx,gy-7-ch,2,2);ctx.fillRect(sx+3,gy-7-ch,2,2);
+  ctx.fillRect(sx+5,gy-4-ch,((frame>>4)%2===0)?3:2,1);
+}
+function drawRest(sx){ // mola feneri: etap sonu, kedi bekler
   var gy=H-6;
   ctx.fillStyle='#5C3E24';ctx.fillRect(sx-1,gy-22,2,22);
   var glow=((frame>>4)%2===0);
@@ -936,6 +956,7 @@ function drawRest(sx){ // mola feneri: etap sonu
   ctx.fillRect(sx-2,gy-26,4,4);
   ctx.globalAlpha=0.22;ctx.fillStyle='#FFE9A8';
   ctx.fillRect(sx-4,gy-28,8,8);ctx.globalAlpha=1;
+  drawCat(sx+5,gy,won&&((frame>>3)%2===0));
   drawText('MOLA',Math.round(sx-textW('MOLA',1)/2),gy-36,'#5FD3C4',1);
 }
 function drawHouse(sx){
@@ -971,11 +992,7 @@ function drawHouse(sx){
     ctx.fillStyle='#F7C566';ctx.fillRect(sx+19,gy-8,2,2);
   }
   if(tier>=3){ // kedi + baca dumanı (varışta zıplar)
-    var gyc=gy-((won&&(frame>>3)%2===0)?2:0);
-    ctx.fillStyle='#241C2E';
-    ctx.fillRect(sx+9,gyc-5,5,4);
-    ctx.fillRect(sx+9,gyc-7,2,2);ctx.fillRect(sx+12,gyc-7,2,2);
-    ctx.fillRect(sx+14,gyc-4,((frame>>4)%2===0)?3:2,1);
+    drawCat(sx+9,gy,won&&((frame>>3)%2===0));
     ctx.fillStyle='#C9C0A4';ctx.globalAlpha=0.6;
     var sm=(frame>>2)%12;
     ctx.fillRect(sx+7,gy-48-sm,2,2);
@@ -1386,7 +1403,7 @@ document.getElementById('btnReset').onclick=function(){
     return;
   }
   clearTimeout(resetT);resetArm=false;
-  savedLevel=1;level=1;finalDone=false;moms={};
+  savedLevel=1;level=1;finalDone=false;moms={};bestStage=0;
   try{localStorage.removeItem(SAVE_KEY);}catch(e){}
   reset();syncPlayBtn();
   b.textContent='İLERLEMEYİ SIFIRLA';b.style.color='#7A8199';
