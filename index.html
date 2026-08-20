@@ -444,6 +444,7 @@ var mode='idle';
 var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
+var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null;
 var HOUSE_TH=[10,30,60,100,150,210]; // ev süsü eşikleri (bankalanan para)
 function houseTier(){
   var t=0;
@@ -480,14 +481,21 @@ function reset(){
   makeBackdrops();
   hosts=[];obs={bird:[],car:[],bike:[],runner:[]};
   startX=60; goalX=startX+LV.dist; won=false;
-  gen={bird:startX+220,car:startX+300,bike:startX+260,runner:startX+180};
-  me=newHost('runner',startX);hosts.push(me);
-  hosts.push(newHost('bird',startX+50));
-  hosts.push(newHost('car',startX-30));
-  hosts.push(newHost('bike',startX+30));
+  cpX=startX+Math.round(LV.dist/2);cpReached=false;securedCoins=0;dropPile=null;
+  var spawnX=startX;
+  if(retryInfo&&retryInfo.level===level){ // aynı level'a dönüş: bayrak + düşen para
+    if(retryInfo.cp){spawnX=cpX;cpReached=true;}
+    if(retryInfo.drop)dropPile={x:retryInfo.drop.x,amt:retryInfo.drop.amt};
+  }
+  retryInfo=null;
+  gen={bird:spawnX+220,car:spawnX+300,bike:spawnX+260,runner:spawnX+180};
+  me=newHost('runner',spawnX);hosts.push(me);
+  hosts.push(newHost('bird',spawnX+50));
+  hosts.push(newHost('car',spawnX-30));
+  hosts.push(newHost('bike',spawnX+30));
   spirit=null;lastHost=null;lastHopT=-9;camX=0;warned=false;
   fx={lines:[],rings:[],texts:[],puffs:[],finger:null,miss:[],confetti:[]};
-  orbs=[];orbGen=startX+120;orbsGot=0;orbsTotal=0;runCoins=0;
+  orbs=[];orbGen=spawnX+120;orbsGot=0;orbsTotal=0;runCoins=0;
   reviveUsed=false;invulnT=0;
   t=0;swaps=0;clutch=0;smashed=0;aiCool=0;shake=0;slowT=0;dead=false;truckSeen=false;
 }
@@ -676,6 +684,21 @@ function update(dt){
         }
       }
     }
+    if(!cpReached&&me.x>=cpX){
+      cpReached=true;
+      if(houseTier()>=4){ // ışıklar perki: bayrağa kadar kazanılan garanti
+        securedCoins=runCoins;
+        fx.texts.push({x:cpX,y:yRunner()-30,s:'PARA GUVENDE',a:1.4,c:'#5FD3C4'});
+      } else fx.texts.push({x:cpX,y:yRunner()-30,s:'BAYRAK',a:1.2,c:'#5FD3C4'});
+      fx.rings.push({x:cpX,y:yRunner()-10,r:3,a:1});
+      SFX.clutch();
+    }
+    if(dropPile&&Math.abs(me.x-dropPile.x)<9){ // düşen paranı geri al
+      runCoins+=dropPile.amt;
+      fx.texts.push({x:me.x,y:hostYf(me)-14,s:'+'+dropPile.amt,a:1.2,c:'#F7C566'});
+      fx.rings.push({x:dropPile.x,y:yRunner()-6,r:3,a:1});
+      SFX.orb();dropPile=null;
+    }
     if(me.x>=goalX){winLevel();return;}
   }
 
@@ -759,13 +782,28 @@ function die(reason){
   dead=true;shake=6;
   if(me)fx.puffs.push({x:me.x,y:hostYf(me),r:2,a:1});
   SFX.death();
+  var secured=(cpReached&&houseTier()>=4)?Math.min(securedCoins,runCoins):0;
+  var dropAmt=runCoins-secured;
+  var dx=Math.max(startX+60,Math.min((me?me.x:(lastHost?lastHost.x:startX)),goalX-80));
+  deathSettle={level:level,cp:cpReached,secured:secured,drop:dropAmt,x:dx};
   document.getElementById('deathReason').textContent='LEVEL '+level+' — '+(reason||'');
-  document.getElementById('deathScore').textContent=runCoins+' PARA';
+  document.getElementById('deathScore').textContent=
+    dropAmt>0?dropAmt+' PARA YOLDA':'EVDESİN SAYILIR';
   document.getElementById('deathStats').innerHTML=
     swaps+' beden · '+clutch+' son saniye · '+smashed+' ezme · '+
-    Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100)+'% yol';
+    Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100)+'% yol'+
+    (dropAmt>0?'<br><b style="color:#F7C566">paran seni yolda bekliyor — geri al</b>':'')+
+    (secured>0?'<br><b style="color:#5FD3C4">'+secured+' para bayrakta güvendeydi, eve gitti</b>':'')+
+    (cpReached?'<br>bayraktan devam edeceksin':'');
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
+}
+function settleDeath(){ // ölüm kesinleşti: güvendeki para bankaya, kalanı yola
+  if(!deathSettle)return;
+  if(deathSettle.secured>0){bankedCoins+=deathSettle.secured;saveProgress(savedLevel);}
+  retryInfo={level:deathSettle.level,cp:deathSettle.cp,
+             drop:deathSettle.drop>0?{x:deathSettle.x,amt:deathSettle.drop}:null};
+  deathSettle=null;
 }
 function nextTierText(){
   for(var i=0;i<HOUSE_TH.length;i++)
@@ -1025,6 +1063,24 @@ function draw(){
     }
   });
 
+  if(mode!=='idle'){
+    var fpx=Math.round(cpX-camX);
+    if(fpx>-10&&fpx<W+10){ // yarı yol bayrağı
+      var fgy=H-14;
+      ctx.fillStyle='#D8CDB2';ctx.fillRect(fpx,fgy-26,1,26);
+      ctx.fillStyle=cpReached?'#7A8199':'#5FD3C4';
+      ctx.fillRect(fpx+1,fgy-26,6,4);ctx.fillRect(fpx+1,fgy-22,4,2);
+    }
+  }
+  if(dropPile){
+    var ppx=Math.round(dropPile.x-camX);
+    if(ppx>=-12&&ppx<=W+12){ // yola düşen para: parlayan kese
+      var ppy=H-28+(((frame>>3)%2===0)?0:1);
+      ctx.fillStyle='#C97B3C';ctx.fillRect(ppx-2,ppy-2,5,5);ctx.fillRect(ppx-1,ppy-3,3,1);
+      ctx.fillStyle='#F7C566';ctx.fillRect(ppx-1,ppy-1,2,2);
+      pixelRing(ppx,ppy,6+((frame>>2)%5),'#F7C566',0.45);
+    }
+  }
   hosts.forEach(function(h){
     if(h===me)return;
     var sx=h.x-camX;if(sx<-24||sx>W+24)return;
@@ -1130,6 +1186,7 @@ function draw(){
     var prog=Math.max(0,Math.min(1,((me?me.x:(spirit?spirit.fx:startX))-startX)/LV.dist));
     ctx.fillStyle='#14172B';ctx.fillRect(bx0,7,bw2,3);
     ctx.fillStyle='#5FD3C4';ctx.fillRect(bx0,7,Math.round(bw2*prog),3);
+    ctx.fillStyle='#F5EFE0';ctx.fillRect(bx0+Math.round(bw2/2),6,1,5);
     ctx.fillStyle='#F5EFE0';
     ctx.fillRect(bx0+Math.round(bw2*prog)-1,6,2,5);
     ctx.fillStyle='#F7C566';
@@ -1176,8 +1233,9 @@ document.getElementById('btnPlay').onclick=function(){start('play')};
 document.getElementById('btnNext').onclick=function(){
   level++;saveProgress(level);start('play');
 };
-document.getElementById('btnAgain').onclick=function(){start('play')};
+document.getElementById('btnAgain').onclick=function(){settleDeath();start('play')};
 document.getElementById('btnMenu1').onclick=function(){
+  settleDeath();
   mode='idle';hideOverlays();
   document.getElementById('menu').classList.remove('hidden');
   syncPlayBtn();
@@ -1201,7 +1259,7 @@ document.getElementById('btnRevive').onclick=function(){
       obs[l]=obs[l].filter(function(o){return o.x<rx+20||o.x>rx+150;});
     });
     me=newHost('runner',rx);hosts.push(me);
-    reviveUsed=true;dead=false;
+    reviveUsed=true;dead=false;deathSettle=null;
     invulnT=1.2;warned=false;
     SFX.revive();
   },700);
