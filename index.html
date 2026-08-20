@@ -1578,7 +1578,7 @@ function draw(){
 
     var bw2=Math.min(100,W-120);
     var bx0=Math.round((W-bw2)/2);
-    var prog=Math.max(0,Math.min(1,((me?me.x:(spirit?spirit.fx:startX))-startX)/LV.dist));
+    var prog=Math.max(0,Math.min(1,((me?me.x:(spirit?spirit.fx:(soulFree?soulFree.x:startX)))-startX)/TOTAL));
     ctx.fillStyle='#14172B';ctx.fillRect(bx0,7,bw2,3);
     ctx.fillStyle='#5FD3C4';ctx.fillRect(bx0,7,Math.round(bw2*prog),3);
     ctx.fillStyle='#F5EFE0';ctx.fillRect(bx0+Math.round(bw2/2),6,1,5);
