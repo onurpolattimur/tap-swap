@@ -505,6 +505,7 @@ var bestRel=0;      // rekor: yol başından en uzak nokta
 var momsHome=0;     // eve ulaşan anlar
 var spotsGone={};   // eve gitmiş an noktaları (bir daha doğmaz)
 var savedPile=null; // yolda bekleyen anlar {rel,idxs}
+var flowers=[]; // düşülen yerlerde açan çiçekler (rel listesi)
 var seals=[];       // mühürlü fenerler (biyom sınır indeksleri)
 var GIFTS={ // yolun hediyeleri: sınırı GEÇMEKLE açılır, kalıcı
  2:'Koru seni tanıdı — bedenler geç yorulur.',
@@ -531,6 +532,7 @@ function loadSave(){
     if(d&&d.pile&&isFinite(d.pile.rel)&&d.pile.idxs)
       savedPile={rel:d.pile.rel,idxs:d.pile.idxs.slice(0,30)};
     if(d&&d.seals)seals=d.seals.slice(0,9);
+    if(d&&d.flow)flowers=d.flow.slice(0,40);
     if(d&&d.fin)finalDone=true;
   }catch(e){}
 }
@@ -538,7 +540,7 @@ function saveProgress(){
   try{localStorage.setItem(SAVE_KEY,JSON.stringify({
     v:3,bestRel:Math.round(bestRel),momsHome:momsHome,chainBest:chainBest,nights:nightsWalked,spots:spotsGone,
     pile:savedPile?{rel:savedPile.rel,idxs:savedPile.idxs}:null,
-    seals:seals,eman:emanetSeen?1:0,fin:finalDone?1:0}));}catch(e){}
+    seals:seals,flow:flowers,eman:emanetSeen?1:0,fin:finalDone?1:0}));}catch(e){}
 }
 
 function newHost(type,x){
@@ -590,7 +592,7 @@ function reset(){
 function bagChance(type){
   // araba: hızlı+zengin ama riskli; kamyon engellere ölümsüz, ucuz olmasın
   var c=type==='car'?0.25:type==='truck'?0.08:0.10;
-  var f=(me&&bestRel>120&&me.x-startX>bestRel)?1.5:1; // sınır ötesi
+  var f=(me&&bestRel>120&&me.x-startX>bestRel&&me.x-startX<bestRel+300)?1.5:1; // sınır penceresi
   return Math.min(0.9,c*LV.bagMul*f*(giftOn(4)?1.5:1)*(nightsWalked>=5?1.1:1)); // anayol + aşinalık
 }
 function laneFreeAt(l,x,rad){
@@ -921,7 +923,7 @@ function update(dt){
   // ruh ışıkları
   while(orbGen<camX+W+60){
     if(orbGen<goalX-80){
-      var frontier=(bestRel>120&&orbGen-startX>bestRel); // sınır ötesi: keşif payı
+      var frontier=(bestRel>120&&orbGen-startX>bestRel&&orbGen-startX<bestRel+300); // keşif payı: sınırın hemen ötesi
       for(var sn2=0;sn2<seals.length;sn2++){ // yanan fenerin ışığı: sonrası cömert
         var sd2=orbGen-(startX+BND[seals[sn2]]);
         if(sd2>0&&sd2<400){frontier=true;break;}
@@ -1070,6 +1072,10 @@ function settleDeath(){ // gece kesinleşti: rekorlar ve bekleyen anlar yola iş
   if(!deathSettle)return;
   if(deathSettle.rel>bestRel)bestRel=deathSettle.rel;
   if(deathSettle.maxChain>chainBest)chainBest=deathSettle.maxChain;
+  var fr=Math.round(deathSettle.rel),dup=false; // düştüğün yerde çiçek açar
+  for(var fi4=0;fi4<flowers.length;fi4++)
+    if(Math.abs(flowers[fi4]-fr)<25){dup=true;break;}
+  if(!dup){flowers.push(fr);if(flowers.length>40)flowers.shift();}
   savedPile=deathSettle.pile?{rel:deathSettle.pile.rel,idxs:deathSettle.pile.idxs}:savedPile;
   saveProgress();
   deathSettle=null;
@@ -1313,6 +1319,15 @@ function draw(){
 
   var hx=goalX-camX;
   if(hx>-30&&hx<W+30)drawHouse(Math.round(hx));
+  if(mode!=='idle')for(var fw=0;fw<flowers.length;fw++){ // gecelerin izleri
+    var fwx=Math.round(startX+flowers[fw]-camX);
+    if(fwx<-4||fwx>W+4)continue;
+    var fgy2=H-7;
+    ctx.fillStyle='#5FA85A';ctx.fillRect(fwx,fgy2-2,1,2);
+    ctx.fillStyle=(fw%2===0)?'#FF9EB5':'#F7C566';
+    ctx.fillRect(fwx-1,fgy2-4,3,2);
+    ctx.fillStyle='#F5EFE0';ctx.fillRect(fwx,fgy2-4,1,1);
+  }
   for(var lb=0;lb<STAGES-1;lb++){ // biyom fenerleri
     var lxx=startX+BND[lb]-camX;
     if(lxx>-16&&lxx<W+16){
