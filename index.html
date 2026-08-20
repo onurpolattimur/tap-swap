@@ -476,7 +476,7 @@ var curBiome=0,biomeFlashT=0,finalDone=false;
 var recCrossed=false,catFollowT=0;
 var chain=0,hopClutch=false,goldTimer=0,goldPowerT=0,missedGold=false;
 var chainBest=0,runMaxChain=0;
-var soulFree=null,nightsWalked=0,teachT=null;
+var soulFree=null,nightsWalked=0,teachT=null,emanetSeen=false;
 var sealPromptLb=-1,forceStart=false,nightBonus=false;
 var isFinal=false; // son biyomda mıyız (kutsal final)
 var MOM_TH=[3,7,12,17,22,27]; // eve ulaşan an eşikleri: evin geri gelen parçaları
@@ -506,6 +506,10 @@ var GIFTS={ // yolun hediyeleri: sınırı GEÇMEKLE açılır, kalıcı
  6:'Pazar yerinin ışığı — nefesler daha güçlü, daha yakından çeker.',
  8:'Ay seni gördü — fenerler geçerken nefes verir.'};
 function giftOn(n){return bestRel>=BND[n-1];}
+function sealCost(){ // ilk emanet ucuz, derine yerleşmek daha çok an ister
+  if(seals.length===0&&nightsWalked<=3)return 1;
+  return Math.min(2+seals.length,4);
+}
 function loadSave(){
   var raw=null;
   try{raw=localStorage.getItem(SAVE_KEY);}catch(e){return;}
@@ -516,6 +520,7 @@ function loadSave(){
     if(d&&isFinite(d.momsHome))momsHome=Math.max(0,Math.floor(d.momsHome));
     if(d&&isFinite(d.chainBest))chainBest=Math.max(0,Math.floor(d.chainBest));
     if(d&&isFinite(d.nights))nightsWalked=Math.max(0,Math.floor(d.nights));
+    if(d&&d.eman)emanetSeen=true;
     if(d&&d.spots)for(var k in d.spots)spotsGone[k]=1;
     if(d&&d.pile&&isFinite(d.pile.rel)&&d.pile.idxs)
       savedPile={rel:d.pile.rel,idxs:d.pile.idxs.slice(0,30)};
@@ -527,7 +532,7 @@ function saveProgress(){
   try{localStorage.setItem(SAVE_KEY,JSON.stringify({
     v:3,bestRel:Math.round(bestRel),momsHome:momsHome,chainBest:chainBest,nights:nightsWalked,spots:spotsGone,
     pile:savedPile?{rel:savedPile.rel,idxs:savedPile.idxs}:null,
-    seals:seals,fin:finalDone?1:0}));}catch(e){}
+    seals:seals,eman:emanetSeen?1:0,fin:finalDone?1:0}));}catch(e){}
 }
 
 function newHost(type,x){
@@ -675,9 +680,10 @@ cv.addEventListener('pointerdown',function(e){
   if(sealPromptLb>=0){ // anını fenere bırak: gece artık burada başlar
     var slx2=startX+BND[sealPromptLb];
     if(Math.abs(sx+camX-slx2)<26){
+      var cost=sealCost();
       seals.push(sealPromptLb);
       var left=0;
-      while(carriedIdx.length&&left<3){
+      while(carriedIdx.length&&left<cost){
         var ix=carriedIdx.shift();left++;
         if(ix>=0)spotsGone[ix]=1;
       }
@@ -863,11 +869,15 @@ function update(dt){
       SFX.ui();
     }
     sealPromptLb=-1;
-    if(carriedIdx.length>=3){ // 3 an taşıyorsan feneri mühürleyebilirsin
+    if(carriedIdx.length>=sealCost()){ // yeterli an taşıyorsan feneri yakabilirsin
       for(var sb2=0;sb2<STAGES-1;sb2++){
         if(seals.indexOf(sb2)>=0)continue;
         var slx=startX+BND[sb2];
         if(me.x>slx-70&&me.x<slx-4){sealPromptLb=sb2;break;}
+      }
+      if(sealPromptLb>=0&&!emanetSeen){ // bedelin bilgisi bir kez, nötr
+        emanetSeen=true;saveProgress();
+        teach('Fenere dokun: '+sealCost()+' an burada yaşar, gece buradan başlar. Dokunmazsan anlar eve gider.',5200);
       }
     }
     for(var bi2=0;bi2<bigMoms.length;bi2++){var bm=bigMoms[bi2];
@@ -903,6 +913,10 @@ function update(dt){
   while(orbGen<camX+W+60){
     if(orbGen<goalX-80){
       var frontier=(bestRel>120&&orbGen-startX>bestRel); // sınır ötesi: keşif payı
+      for(var sn2=0;sn2<seals.length;sn2++){ // yanan fenerin ışığı: sonrası cömert
+        var sd2=orbGen-(startX+BND[seals[sn2]]);
+        if(sd2>0&&sd2<400){frontier=true;break;}
+      }
       var ol;
       if(Math.random()<0.5){ // nefes kararla gelsin: engelli şeride diz
         var risky=LANES.filter(function(l){return !laneFreeAt(l,orbGen+30,90);});
@@ -1294,9 +1308,15 @@ function draw(){
     var lxx=startX+BND[lb]-camX;
     if(lxx>-16&&lxx<W+16){
       drawRest(Math.round(lxx),seals.indexOf(lb)>=0);
-      if(lb===sealPromptLb&&((frame>>3)%2===0)){
-        drawText('EMANET',Math.round(lxx-textW('EMANET',1)/2),H-44,'#FFE9A8',1);
-        pixelRing(lxx,H-30,9,'#FFE9A8',0.5);
+      if(lb===sealPromptLb){
+        if((frame>>3)%2===0){
+          drawText('EMANET',Math.round(lxx-textW('EMANET',1)/2),H-44,'#FFE9A8',1);
+          pixelRing(lxx,H-30,9,'#FFE9A8',0.5);
+        }
+        drawText('EVE',Math.round(lxx)+14,H-44,'#5FD3C4',1);
+        ctx.fillStyle='#5FD3C4';
+        ctx.fillRect(Math.round(lxx)+28,H-41,4,1);
+        ctx.fillRect(Math.round(lxx)+31,H-42,1,3);
       }
     }
   }
