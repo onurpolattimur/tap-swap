@@ -458,6 +458,7 @@ var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,reviveUsed,invulnT,freshT,tutHint=false;
 var cpX,cpReached,dropPile,deathSettle=null,retryInfo=null,arrivalPop=null;
+var bigMoms=[],carried=0,trailH=[];
 var isFinal=false,finalDone=false;
 var MOM_TH=[3,7,12,17,22,27]; // toplam an eşikleri: evin geri gelen parçaları
 var HOUSE_MEMS=[
@@ -511,9 +512,15 @@ function reset(){
   hosts=[];obs={bird:[],car:[],bike:[],runner:[]};
   startX=60; goalX=startX+LV.dist; won=false;
   cpX=startX+Math.round(LV.dist/2);cpReached=false;dropPile=null;
+  bigMoms=[];carried=0;trailH=[];
+  for(var bi=0;bi<3;bi++)bigMoms.push({ // etaba gizlenmiş 3 büyük an
+    x:startX+Math.round(LV.dist*(0.28+bi*0.27)),
+    lane:LANES[Math.floor(Math.random()*4)],got:false});
   var spawnX=startX;
   if(retryInfo&&retryInfo.level===level){ // aynı etaba dönüş: duraktan devam
     if(retryInfo.cp){spawnX=cpX;cpReached=true;}
+    if(retryInfo.taken)for(var ti=0;ti<3;ti++)if(retryInfo.taken[ti])bigMoms[ti].got=true;
+    if(retryInfo.pile)dropPile={x:retryInfo.pile.x,amt:retryInfo.pile.amt};
   }
   retryInfo=null;
   gen={bird:spawnX+220,car:spawnX+300,bike:spawnX+260,runner:spawnX+180};
@@ -718,11 +725,30 @@ function update(dt){
       fx.rings.push({x:cpX,y:yRunner()-10,r:3,a:1});
       SFX.clutch();
     }
+    for(var bi2=0;bi2<bigMoms.length;bi2++){var bm=bigMoms[bi2];
+      if(!bm.got&&bm.lane===laneOf(me)&&Math.abs(bm.x-me.x)<10){
+        bm.got=true;carried++;
+        slowT=Math.max(slowT,0.18); // an: zaman bir nefes durur
+        fx.texts.push({x:bm.x,y:hostYf(me)-16,s:'AN',a:1.3,c:'#FFE9A8'});
+        fx.rings.push({x:bm.x,y:hostYf(me),r:3,a:1.3});
+        SFX.clutch();
+      }
+    }
+    if(dropPile&&Math.abs(me.x-dropPile.x)<10){ // düşen anların geri alınışı
+      carried+=dropPile.amt;
+      fx.texts.push({x:me.x,y:hostYf(me)-16,s:'+'+dropPile.amt+' AN',a:1.3,c:'#FFE9A8'});
+      fx.rings.push({x:dropPile.x,y:yRunner()-8,r:3,a:1});
+      SFX.clutch();dropPile=null;
+    }
     if(me.x>=goalX){winLevel();return;}
   }
 
   var anchor=spirit?(spirit.fx+(spirit.to.x-spirit.fx)*(spirit.tt/spirit.dur)):me.x;
   camX=anchor-Math.round(W*0.24);
+  var tpos=spirit?
+    {x:anchor,y:spirit.fy+(hostYf(spirit.to)-spirit.fy)*(spirit.tt/spirit.dur)}:
+    (me?{x:me.x,y:hostYf(me)-hostHalf(me)-4}:null);
+  if(tpos){trailH.unshift(tpos);if(trailH.length>40)trailH.length=40;}
 
   LANES.forEach(function(l){
     while(gen[l]<camX+W+90)genLane(l);
@@ -819,19 +845,24 @@ function die(reason){
   dead=true;shake=6;
   if(me)fx.puffs.push({x:me.x,y:hostYf(me),r:2,a:1});
   SFX.death();
-  deathSettle={level:level,cp:cpReached};
+  var dx=Math.max(startX+60,Math.min((me?me.x:(lastHost?lastHost.x:startX)),goalX-80));
+  deathSettle={level:level,cp:cpReached,
+    pile:carried>0?{x:dx,amt:carried}:null,
+    taken:bigMoms.map(function(b){return b.got;})};
   var pct=Math.floor(Math.min(1,(((me?me.x:startX)-startX)/LV.dist))*100);
   document.getElementById('deathReason').textContent='ETAP '+level+'/'+STAGES+' — '+(reason||'');
   document.getElementById('deathScore').textContent='%'+pct;
   document.getElementById('deathStats').innerHTML=
     swaps+' beden · '+clutch+' son an · '+smashed+' ezme'+
+    (carried>0?'<br><b style="color:#FFE9A8">'+carried+' an yolda seni bekliyor — geri al</b>':'')+
     (cpReached?'<br><b style="color:#5FD3C4">duraktan devam edeceksin</b>':'');
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
 function settleDeath(){
   if(!deathSettle)return;
-  retryInfo={level:deathSettle.level,cp:deathSettle.cp};
+  retryInfo={level:deathSettle.level,cp:deathSettle.cp,
+             pile:deathSettle.pile,taken:deathSettle.taken};
   deathSettle=null;
 }
 function winLevel(){
@@ -843,10 +874,15 @@ function winLevel(){
     vx:(Math.random()-0.5)*40,vy:-20-Math.random()*30,a:1.6,
     c:confCols[ci%4]});
   SFX.win();
+  var tierBefore=houseTier();
   if(mode!=='auto'){
+    if(carried>(moms[level]||0))moms[level]=carried;
     if(isFinal)finalDone=true;
     saveProgress(level+1);
+    for(var fi=0;fi<carried;fi++) // anlar fenere süzülür
+      fx.fly.push({t:-fi*0.18,x0:goalX-14-Math.random()*14,y0:H-46-Math.random()*20});
   }
+  if(houseTier()>tierBefore)arrivalPop={t:0,done:false};
   document.getElementById('winTitle').textContent=
     isFinal?'EVDESİN.':'ETAP '+level+'/'+STAGES+' — MOLA';
   document.getElementById('btnNext').textContent=isFinal?'YENİDEN YÜRÜ':'YOLA DEVAM';
@@ -854,7 +890,9 @@ function winLevel(){
   document.getElementById('winStats').innerHTML=
     (isFinal?'Bir gün, bir gece — ve kapı açıldı. Ruh huzura erdi.<br>':
       '<b>'+LV.name+'</b> geride kaldı.<br>sıradaki: <b>'+ROUTE[level].name+'</b><br>')+
+    'bu etapta <b style="color:#FFE9A8">'+carried+'/3 an</b> · toplam '+momTotal()+'/30 · '+
     swaps+' beden · '+clutch+' son an'+
+    (houseTier()>tierBefore?'<br><b style="color:#5FD3C4">'+HOUSE_MEMS[houseTier()-1]+'</b>':'')+
     (level===1?'<br><b style="color:#FF4D5A">Bundan sonra bedenler yoruluyor — ışıklar nefes verir!</b>':'');
   setTimeout(function(){
     document.getElementById('win').classList.remove('hidden');
@@ -1120,6 +1158,25 @@ function draw(){
       ctx.fillRect(fpx+1,fgy-26,6,4);ctx.fillRect(fpx+1,fgy-22,4,2);
     }
   }
+  bigMoms.forEach(function(bm){ // büyük anlar: parlayan yıldızlar
+    if(bm.got)return;
+    var bsx=Math.round(bm.x-camX);if(bsx<-10||bsx>W+10)return;
+    var bsy=laneYof(bm.lane)-11+(((frame>>3)%2===0)?0:1);
+    ctx.fillStyle='#FFE9A8';
+    ctx.fillRect(bsx,bsy-3,1,7);ctx.fillRect(bsx-3,bsy,7,1);
+    ctx.fillStyle='#F5EFE0';ctx.fillRect(bsx-1,bsy-1,3,3);
+    pixelRing(bsx,bsy,5+((frame>>2)%4),'#FFE9A8',0.4);
+  });
+  if(dropPile){ // yola düşen anlar bekler
+    var ppx=Math.round(dropPile.x-camX);
+    if(ppx>=-12&&ppx<=W+12){
+      var ppy=H-30+(((frame>>3)%2===0)?0:1);
+      ctx.fillStyle='#FFE9A8';
+      ctx.fillRect(ppx,ppy-2,1,5);ctx.fillRect(ppx-2,ppy,5,1);
+      ctx.fillStyle='#F5EFE0';ctx.fillRect(ppx,ppy,1,1);
+      pixelRing(ppx,ppy,6+((frame>>2)%5),'#FFE9A8',0.45);
+    }
+  }
   hosts.forEach(function(h){
     if(h===me)return;
     var sx=h.x-camX;if(sx<-24||sx>W+24)return;
@@ -1165,6 +1222,19 @@ function draw(){
     ctx.globalAlpha=1;
   }
 
+  if(carried>0&&trailH.length>8){ // anılar peşinden gelir
+    for(var tci=0;tci<Math.min(carried,3);tci++){
+      var tp=trailH[Math.min(trailH.length-1,8+tci*7)];
+      var tx2=Math.round(tp.x-camX),ty2=Math.round(tp.y);
+      if(tx2<-4||tx2>W+4)continue;
+      ctx.fillStyle='#F7C566';ctx.fillRect(tx2,ty2,2,2);
+      ctx.fillStyle='#FFE9A8';ctx.fillRect(tx2,ty2,1,1);
+      if(((frame>>2)+tci)%3===0){
+        ctx.globalAlpha=0.5;ctx.fillStyle='#FFE9A8';
+        ctx.fillRect(tx2-1,ty2-1,3,3);ctx.globalAlpha=1;
+      }
+    }
+  }
   fx.fly.forEach(function(f){
     if(f.t<0)return;
     var fp=Math.min(f.t/0.5,1);
@@ -1204,6 +1274,12 @@ function draw(){
     var kalan=Math.max(0,Math.round((goalX-(me?me.x:(spirit?spirit.fx:startX)))+ROUTE_REST[level-1]));
     drawText('EVE '+kalan,6,6,'#F7C566',2);
     drawText('ETAP '+level,6,20,hudMut,1);
+    for(var mi=0;mi<3;mi++){
+      var mgot=bigMoms[mi]&&bigMoms[mi].got;
+      ctx.fillStyle=mgot?'#FFE9A8':'#3A4468';
+      ctx.fillRect(6+mi*6,30,3,3);
+      if(mgot){ctx.fillStyle='#F5EFE0';ctx.fillRect(7+mi*6,31,1,1);}
+    }
     var lbl=(mode==='auto')?'DEMO':'TAP=SWAP';
     drawText(lbl,W-6-textW(lbl,1),6,hudMut,1);
     if(LV.label&&t<4&&((frame>>4)%4!==3))
@@ -1239,7 +1315,7 @@ function loop(now){
 function syncPlayBtn(){
   document.getElementById('btnPlay').textContent=
     (level>=STAGES)?'ŞAFAK — SON ETAP':'ETAP '+level+'/'+STAGES+' — YOLA ÇIK';
-  var t='EVE KALAN: '+(STAGES-level+1)+' ETAP';
+  var t='EVE KALAN: '+(STAGES-level+1)+' ETAP · ANLAR: '+momTotal()+'/30';
   if(finalDone)t+=' · yol bir kez yüründü';
   document.getElementById('menuBank').textContent=t;
 }
