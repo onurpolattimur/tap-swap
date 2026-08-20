@@ -82,8 +82,9 @@
     <div class="small" id="deathReason">SKOR</div>
     <div id="deathScore">0</div>
     <div class="tag" id="deathStats"></div>
-    <button class="btn" id="btnRevive" style="border-color:#5FD3C4;color:#5FD3C4">▶ REKLAM İZLE — DEVAM ET</button>
+    <button class="btn" id="btnRevive" style="border-color:#5FD3C4;color:#5FD3C4">▶ BİRİ SENİ HATIRLADI — GERİ DÖN</button>
     <button class="btn primary" id="btnAgain">YENİ GECE</button>
+    <button class="btn" id="btnFromStart" style="display:none;font-size:10px">BAŞTAN YÜRÜ</button>
     <button class="btn" id="btnMenu2">MENÜ</button>
   </div>
 
@@ -468,6 +469,7 @@ var bigMoms=[],carriedIdx=[],trailH=[];
 var curBiome=0,biomeFlashT=0,finalDone=false;
 var recCrossed=false,catFollowT=0;
 var chain=0,hopClutch=false,goldTimer=0,goldPowerT=0,missedGold=false;
+var sealPromptLb=-1,forceStart=false,nightBonus=false;
 var isFinal=false; // son biyomda mıyız (kutsal final)
 var MOM_TH=[3,7,12,17,22,27]; // eve ulaşan an eşikleri: evin geri gelen parçaları
 var HOUSE_MEMS=[
@@ -525,11 +527,13 @@ function newHost(type,x){
 function reset(){
   startX=60; goalX=startX+TOTAL; won=false;
   var spawnX=startX;
-  // mühürlü fener varsa gece oradan başlayabilir (en uzaktaki)
-  if(seals.length){
+  // mühürlü fener varsa gece oradan başlar (en uzaktaki); BAŞTAN YÜRÜ bunu bir geceliğine kapatır
+  if(seals.length&&!forceStart){
     var sb=Math.max.apply(null,seals);
     spawnX=startX+BND[sb];
   }
+  nightBonus=(spawnX===startX&&seals.length>0); // baştan yürüyene yol cömert davranır
+  forceStart=false;sealPromptLb=-1;
   curBiome=biomeAt(spawnX);level=curBiome+1;isFinal=(curBiome===STAGES-1);
   LV=routeParams(level);
   TH=LV.th===3?DAWN:THEMES[LV.th];
@@ -645,6 +649,23 @@ cv.addEventListener('pointerdown',function(e){
   if(mode!=='play'||dead||won||spirit)return;
   var r=cv.getBoundingClientRect();
   var sx=(e.clientX-r.left)*(W/r.width),sy=(e.clientY-r.top)*(H/r.height);
+  if(sealPromptLb>=0){ // anını fenere bırak: gece artık burada başlar
+    var slx2=startX+BND[sealPromptLb];
+    if(Math.abs(sx+camX-slx2)<26){
+      seals.push(sealPromptLb);
+      var left=0;
+      while(carriedIdx.length&&left<3){
+        var ix=carriedIdx.shift();left++;
+        if(ix>=0)spotsGone[ix]=1;
+      }
+      saveProgress();
+      fx.texts.push({x:slx2,y:yRunner()-36,s:'EMANET',a:1.5,c:'#FFE9A8'});
+      fx.rings.push({x:slx2,y:yRunner()-14,r:4,a:1.4});
+      SFX.win();
+      sealPromptLb=-1;
+      return;
+    }
+  }
   var h=nearestHost(sx+camX,sy,34);
   if(h)hop(h);
   else{fx.miss.push({x:sx+camX,y:sy,r:2,a:1});SFX.miss();}
@@ -806,6 +827,14 @@ function update(dt){
       });
       SFX.ui();
     }
+    sealPromptLb=-1;
+    if(carriedIdx.length>=3){ // 3 an taşıyorsan feneri mühürleyebilirsin
+      for(var sb2=0;sb2<STAGES-1;sb2++){
+        if(seals.indexOf(sb2)>=0)continue;
+        var slx=startX+BND[sb2];
+        if(me.x>slx-70&&me.x<slx-4){sealPromptLb=sb2;break;}
+      }
+    }
     for(var bi2=0;bi2<bigMoms.length;bi2++){var bm=bigMoms[bi2];
       if(!bm.got&&bm.lane===laneOf(me)&&Math.abs(bm.x-me.x)<10){
         bm.got=true;carriedIdx.push(bm.idx);
@@ -853,7 +882,7 @@ function update(dt){
     for(var io=orbs.length-1;io>=0;io--){var ob=orbs[io];
       if(ob.lane===laneOf(me)&&Math.abs(ob.x-me.x)<(goldPowerT>0?26:(giftOn(6)?12:9))){
         orbs.splice(io,1);
-        me.st=Math.min(1,me.st+(giftOn(6)?0.55:0.4)); // nefes: beden tazelenir
+        me.st=Math.min(1,me.st+(giftOn(6)?0.55:0.4)+(nightBonus&&me.x-startX<1200?0.15:0)); // nefes
         fx.rings.push({x:ob.x,y:hostYf(me),r:2,a:0.8});
         SFX.orb();
       }
@@ -954,6 +983,7 @@ function die(reason){
     (missedGold?'<br><b style="color:#F7C566">altın misafir kaçtı — belki yarın gece</b>':'')+
     '<br>kedi seni bekliyor — yol hatırlıyor';
   document.getElementById('btnRevive').style.display=(reviveUsed||mode==='auto')?'none':'block';
+  document.getElementById('btnFromStart').style.display=seals.length?'block':'none';
   setTimeout(function(){document.getElementById('death').classList.remove('hidden');},450);
 }
 function settleDeath(){ // gece kesinleşti: rekor ve bekleyen anlar yola işlenir
@@ -1032,14 +1062,21 @@ function drawCat(sx,gy,hop){
   ctx.fillRect(sx,gy-7-ch,2,2);ctx.fillRect(sx+3,gy-7-ch,2,2);
   ctx.fillRect(sx+5,gy-4-ch,((frame>>4)%2===0)?3:2,1);
 }
-function drawRest(sx){ // yol feneri: biyom sınırı, anları eve uğurlar
+function drawRest(sx,sealed){ // yol feneri; mühürlüyse emanet anlar döner
   var gy=H-6;
   ctx.fillStyle='#5C3E24';ctx.fillRect(sx-1,gy-22,2,22);
   var glow=((frame>>4)%2===0);
   ctx.fillStyle=glow?'#FFE9A8':'#F7C566';
   ctx.fillRect(sx-2,gy-26,4,4);
-  ctx.globalAlpha=0.22;ctx.fillStyle='#FFE9A8';
+  ctx.globalAlpha=sealed?0.35:0.22;ctx.fillStyle='#FFE9A8';
   ctx.fillRect(sx-4,gy-28,8,8);ctx.globalAlpha=1;
+  if(sealed){
+    for(var oi2=0;oi2<3;oi2++){
+      var ang=frame*0.06+oi2*2.09;
+      ctx.fillStyle=(oi2===((frame>>4)%3))?'#F5EFE0':'#FFE9A8';
+      ctx.fillRect(Math.round(sx+Math.cos(ang)*8),Math.round(gy-24+Math.sin(ang)*4),1,1);
+    }
+  }
 }
 function drawHouse(sx){
   var gy=H-6;
@@ -1197,7 +1234,13 @@ function draw(){
   if(hx>-30&&hx<W+30)drawHouse(Math.round(hx));
   for(var lb=0;lb<STAGES-1;lb++){ // biyom fenerleri
     var lxx=startX+BND[lb]-camX;
-    if(lxx>-16&&lxx<W+16)drawRest(Math.round(lxx));
+    if(lxx>-16&&lxx<W+16){
+      drawRest(Math.round(lxx),seals.indexOf(lb)>=0);
+      if(lb===sealPromptLb&&((frame>>3)%2===0)){
+        drawText('EMANET',Math.round(lxx-textW('EMANET',1)/2),H-44,'#FFE9A8',1);
+        pixelRing(lxx,H-30,9,'#FFE9A8',0.5);
+      }
+    }
   }
   if(bestRel>120&&mode!=='idle'){ // rekor: bayrak + bekleyen kedi
     var rxx=Math.round(startX+bestRel-camX);
@@ -1432,6 +1475,7 @@ function loop(now){
 function syncPlayBtn(){
   document.getElementById('btnPlay').textContent='YENİ GECE — YOLA ÇIK';
   var t='REKOR: '+Math.round(bestRel)+' / '+TOTAL+' · EVDE '+momsHome+'/30 AN';
+  if(seals.length)t+=' · '+seals.length+' fener mühürlü';
   if(savedPile)t+=' · yolda '+savedPile.idxs.length+' an bekliyor';
   if(finalDone)t+=' · azat oldun';
   document.getElementById('menuBank').textContent=t;
@@ -1459,6 +1503,9 @@ document.getElementById('btnNext').onclick=function(){ // azat sonrası: yeni y�
   saveProgress();start('play');
 };
 document.getElementById('btnAgain').onclick=function(){settleDeath();start('play')};
+document.getElementById('btnFromStart').onclick=function(){
+  settleDeath();forceStart=true;start('play');
+};
 document.getElementById('btnMenu1').onclick=function(){
   settleDeath();
   mode='idle';hideOverlays();
