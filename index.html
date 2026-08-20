@@ -126,6 +126,13 @@ var THEMES=[
    side:'#232B47', sideEdge:'#3A4468', seam:'#2E3752',
    bottom:'#0A0D18', wire:'#3A4468' }
 ];
+var DAWN={ name:'ŞAFAK', stars:false, clouds:true, celestial:'sun', hills:true,
+  sky:['#F5C6A0','#F8DCC0','#FBEDD8'],
+  farCol:'#C98D6B', nearGround:'#D9A878',
+  road:'#8A7A6E', roadEdge:'#B0988A', dash:'#FFF6E5',
+  bike:'#7A6A5E', bikeDash:'#F2A65A',
+  side:'#C9A878', sideEdge:'#A8885E', seam:'#B8986A',
+  bottom:'#8A6A48', wire:'#B0988A' };
 var TH=THEMES[0];
 
 // ---------- uyarlanır tam ekran ----------
@@ -241,7 +248,7 @@ var FONT={
 'A':'010 101 111 101 101','D':'110 101 101 101 110','E':'111 100 111 100 111',
 'L':'100 100 100 100 111','M':'10001 11011 10101 10001 10001','O':'111 101 101 101 111',
 'P':'111 101 111 100 100','S':'011 100 010 001 110','T':'111 010 010 010 010',
-'V':'101 101 101 101 010','Y':'101 101 010 010 010','B':'110 101 110 101 110','R':'110 101 110 101 101','G':'111 100 101 101 111','W':'10001 10001 10101 10101 01010','X':'101 101 010 101 101','K':'101 101 110 101 101','N':'10001 11001 10101 10011 10001','U':'101 101 101 101 111',' ':'000 000 000 000 000'};
+'V':'101 101 101 101 010','Y':'101 101 010 010 010','F':'111 100 110 100 100','B':'110 101 110 101 110','R':'110 101 110 101 101','G':'111 100 101 101 111','W':'10001 10001 10101 10101 01010','X':'101 101 010 101 101','K':'101 101 110 101 101','N':'10001 11001 10101 10011 10001','U':'101 101 101 101 111',' ':'000 000 000 000 000'};
 function drawText(str,x,y,color,sc){
   sc=sc||1; ctx.fillStyle=color; var cx=x;
   for(var k=0;k<str.length;k++){
@@ -445,6 +452,7 @@ var hosts,obs,me,spirit,lastHost,lastHopT,camX,gen,startX,goalX,won;
 var fx,t,swaps,clutch,smashed,aiCool,shake,slowT,dead,frame=0,warned,truckSeen;
 var orbs,orbGen,orbsGot,orbsTotal,runCoins,reviveUsed,invulnT,tutHint=false;
 var cpX,cpReached,securedCoins,dropPile,deathSettle=null,retryInfo=null,arrivalPop=null;
+var isFinal=false,finalDone=false;
 var HOUSE_TH=[10,30,60,100,150,210]; // ev süsü eşikleri (bankalanan para)
 var HOUSE_PERKS=[ // her süs bir oynanış perki: ev = güç
  {n:'ÇİT',d:'bedenler %15 geç yorulur'},
@@ -477,12 +485,13 @@ function loadSave(){
     var d=JSON.parse(raw);
     if(d&&isFinite(d.level)&&d.level>=1)savedLevel=Math.floor(d.level);
     if(d&&isFinite(d.coins)&&d.coins>0)bankedCoins=Math.floor(d.coins);
+    if(d&&d.fin)finalDone=true;
   }catch(e){}
   level=savedLevel;
 }
 function saveProgress(lv){
   if(lv>savedLevel)savedLevel=lv;
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({level:savedLevel,coins:bankedCoins}));}catch(e){}
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({level:savedLevel,coins:bankedCoins,fin:finalDone?1:0}));}catch(e){}
 }
 
 function newHost(type,x){
@@ -490,8 +499,15 @@ function newHost(type,x){
           v:Math.floor(Math.random()*3),st:1,bag:0};
 }
 function reset(){
-  LV=lvParams(level);
-  TH=THEMES[(level-1)%THEMES.length];
+  isFinal=(houseTier()>=6&&!finalDone);
+  if(isFinal){ // zafer turu: kısa, yorulmasız, bol paralı
+    LV={dist:420,mul:0.8,gap:260,drainMul:0,lanes:LANES.slice(),
+        truckChance:0.12,orbRich:true,noOrbs:false,bagMul:1.5,mutName:'SAFAK'};
+    TH=DAWN;
+  } else {
+    LV=lvParams(level);
+    TH=THEMES[(level-1)%THEMES.length];
+  }
   makeBackdrops();
   hosts=[];obs={bird:[],car:[],bike:[],runner:[]};
   startX=60; goalX=startX+LV.dist; won=false;
@@ -851,7 +867,7 @@ function winLevel(){
   won=true;shake=3;
   fx.rings.push({x:goalX,y:yRunner()-10,r:4,a:1});
   var confCols=['#F7C566','#5FD3C4','#FF9EB5','#B4DEF4'];
-  for(var ci=0;ci<24;ci++)fx.confetti.push({
+  for(var ci=0;ci<(isFinal?60:24);ci++)fx.confetti.push({
     x:goalX+(Math.random()-0.5)*40,y:yRunner()-50-Math.random()*20,
     vx:(Math.random()-0.5)*40,vy:-20-Math.random()*30,a:1.6,
     c:confCols[ci%4]});
@@ -866,9 +882,15 @@ function winLevel(){
       fx.fly.push({t:-fi*0.09,x0:goalX-16-Math.random()*18,y0:H-42-Math.random()*26});
     if(tierAfter>tierBefore)arrivalPop={t:0,done:false};
   }
-  document.getElementById('winTitle').textContent='LEVEL '+level+' — EVDESİN!';
+  if(isFinal&&mode!=='auto'){finalDone=true;saveProgress(savedLevel);}
+  document.getElementById('winTitle').textContent=
+    isFinal?'ŞAFAK — EV TAMAMLANDI':'LEVEL '+level+' — EVDESİN!';
+  document.getElementById('btnNext').textContent=
+    isFinal?'YOLA DEVAM':'SONRAKİ LEVEL';
   document.getElementById('winScore').textContent=runCoins;
   document.getElementById('winStats').innerHTML=
+    (isFinal?'Ruh huzura erdi — ev ışık dolu, kedi kapıda.<br>'+
+      'Toplam evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b> · yol devam ediyor.<br>':'')+
     swaps+' beden · '+runCoins+' para eve geldi · '+clutch+' son saniye'+
     (mode!=='auto'?'<br>evdeki para: <b style="color:#F7C566">'+bankedCoins+'</b>'+nextTierText():'')+
     (tierAfter>tierBefore?'<br><b style="color:#5FD3C4">YENİ: '+HOUSE_PERKS[tierAfter-1].n+
@@ -1257,7 +1279,8 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 function syncPlayBtn(){
-  document.getElementById('btnPlay').textContent='LEVEL '+level+' — YOLA ÇIK';
+  document.getElementById('btnPlay').textContent=
+    (houseTier()>=6&&!finalDone)?'ŞAFAK — SON YOLCULUK':'LEVEL '+level+' — YOLA ÇIK';
   var t='EVDEKİ PARA: '+bankedCoins;
   for(var i=0;i<HOUSE_TH.length;i++)
     if(bankedCoins<HOUSE_TH[i]){
@@ -1332,7 +1355,7 @@ document.getElementById('btnReset').onclick=function(){
     return;
   }
   clearTimeout(resetT);resetArm=false;
-  savedLevel=1;bankedCoins=0;level=1;
+  savedLevel=1;bankedCoins=0;level=1;finalDone=false;
   try{localStorage.removeItem(SAVE_KEY);}catch(e){}
   reset();syncPlayBtn();
   b.textContent='İLERLEMEYİ SIFIRLA';b.style.color='#7A8199';
